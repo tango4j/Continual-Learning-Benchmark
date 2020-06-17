@@ -2,7 +2,7 @@ GPUID=$1
 OUTDIR=outputs/permuted_MNIST_incremental_class
 REPEAT=10
 mkdir -p $OUTDIR
-#python -u iBatchLearn.py --gpuid $GPUID --repeat $REPEAT --incremental_class --optimizer Adam    --n_permutation 10 --force_out_dim 100 --schedule 10 --batch_size 128 --model_name MLP1000                                                     --lr 0.0001  --offline_training  | tee ${OUTDIR}/Offline.log
+python -u iBatchLearn.py --gpuid $GPUID --repeat $REPEAT --incremental_class --optimizer Adam    --n_permutation 10 --force_out_dim 100 --schedule 10 --batch_size 128 --model_name MLP1000                                                     --lr 0.0001  --offline_training  | tee ${OUTDIR}/Offline.log
 #python -u iBatchLearn.py --gpuid $GPUID --repeat $REPEAT --incremental_class --optimizer Adam    --n_permutation 10 --force_out_dim 100 --schedule 10 --batch_size 128 --model_name MLP1000                                                     --lr 0.0001                      | tee ${OUTDIR}/Adam.log
 #python -u iBatchLearn.py --gpuid $GPUID --repeat $REPEAT --incremental_class --optimizer SGD     --n_permutation 10 --force_out_dim 100 --schedule 10 --batch_size 128 --model_name MLP1000                                                     --lr 0.001                       | tee ${OUTDIR}/SGD.log
 #python -u iBatchLearn.py --gpuid $GPUID --repeat $REPEAT --incremental_class --optimizer Adagrad --n_permutation 10 --force_out_dim 100 --schedule 10 --batch_size 128 --model_name MLP1000                                                     --lr 0.001                       | tee ${OUTDIR}/Adagrad.log

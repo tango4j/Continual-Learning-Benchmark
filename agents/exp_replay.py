@@ -4,7 +4,8 @@ from importlib import import_module
 from .default import NormalNN
 from .regularization import SI, L2, EWC, MAS
 from dataloaders.wrapper import Storage
-
+import pdb
+import ipdb
 
 class Memory(Storage):
     def reduce(self, m):
@@ -16,17 +17,30 @@ class Naive_Rehearsal(NormalNN):
     def __init__(self, agent_config):
         super(Naive_Rehearsal, self).__init__(agent_config)
         self.task_count = 0
-        self.memory_size = 1000
+        self.memory_size = 1000 ### Default Memory Size
         self.task_memory = {}
 
     def learn_batch(self, train_loader, val_loader=None):
         # 1.Combine training set
         dataset_list = []
+
+        ### self.task_memory is dict()
         for storage in self.task_memory.values():
+
+            ### strorgae -> list and each element is ([1, 32, 32], int, str)
             dataset_list.append(storage)
-        dataset_list *= max(len(train_loader.dataset)//self.memory_size,1)  # Let old data: new data = 1:1
+        dll = len(dataset_list) 
+        ### self.memory_size affects training data here.
+
+        ### We assume memory size is full 
+        dataset_list *= max(len(train_loader.dataset)//self.memory_size,1)  # Let old data: new data = 1:1 ### Not exactly 1:1
+
         dataset_list.append(train_loader.dataset)
+
+        ### Wrap mixed dataset (dataset_list).
+            # pdb.set_trace()
         dataset = torch.utils.data.ConcatDataset(dataset_list)
+
         new_train_loader = torch.utils.data.DataLoader(dataset,
                                                        batch_size=train_loader.batch_size,
                                                        shuffle=True,
@@ -36,6 +50,92 @@ class Naive_Rehearsal(NormalNN):
         super(Naive_Rehearsal, self).learn_batch(new_train_loader, val_loader)
 
         # 3.Randomly decide the images to stay in the memory
+    
+        self.task_count += 1
+       
+        # (a) Decide the number of samples for being saved
+
+        ### Let memory size M = self.memory_size 
+        ### the first task, M, the second M/2, the third M/3... Memory Diverges - cf) \Sigma_{1}^{\infinity} 1/n
+        num_sample_per_task = self.memory_size // self.task_count
+        num_sample_per_task = min(len(train_loader.dataset),num_sample_per_task)
+       
+       
+        # (b) Reduce current exemplar set to reserve the space for the new dataset
+        for storage in self.task_memory.values():
+            storage.reduce(num_sample_per_task)
+        
+        # (c) Randomly choose some samples from new task and save them to the memory
+        self.task_memory[self.task_count] = Memory()  # Initialize the memory slot
+        randind = torch.randperm(len(train_loader.dataset))[:num_sample_per_task]  # randomly sample some data
+        for ind in randind:  # save it to the memory
+            self.task_memory[self.task_count].append(train_loader.dataset[ind])
+
+class Fed_Memory_Rehearsal(NormalNN):
+
+    def __init__(self, agent_config):
+        super(Fed_Memory_Rehearsal, self).__init__(agent_config)
+        self.task_count = 0
+        self.memory_size = 1000 ### Default Memory Size
+        self.task_memory = {}
+
+    def learn_batch(self, train_loader, val_loader=None):
+        # 1.Combine training set
+        dataset_list = []
+
+        ### self.task_memory is dict()
+        for storage in self.task_memory.values():
+
+            ### strorgae -> list and each element is ([1, 32, 32], int, str)
+            dataset_list.append(storage)
+        dll = len(dataset_list) 
+        ### self.memory_size affects training data here.
+
+        ### We assume memory size is full 
+        dataset_list *= max(len(train_loader.dataset)//self.memory_size,1)  # Let old data: new data = 1:1 ### Not exactly 1:1
+
+        dataset_list.append(train_loader.dataset)
+
+        ### Wrap mixed dataset (dataset_list).
+            # pdb.set_trace()
+        dataset = torch.utils.data.ConcatDataset(dataset_list)
+
+        new_train_loader = torch.utils.data.DataLoader(dataset,
+                                                       batch_size=train_loader.batch_size,
+                                                       shuffle=True,
+                                                       num_workers=train_loader.num_workers)
+
+        # 2.Update model as normal
+        super(Fed_Memory_Rehearsal, self).learn_batch(new_train_loader, val_loader)
+
+        # 3.Randomly decide the images to stay in the memory
+    
+        self.task_count += 1
+       
+        # (a) Decide the number of samples for being saved
+
+        ### Let memory size M = self.memory_size 
+        ### the first task, M, the second M/2, the third M/3... Memory Diverges - cf) \Sigma_{1}^{\infinity} 1/n
+        num_sample_per_task = self.memory_size // self.task_count
+        num_sample_per_task = min(len(train_loader.dataset),num_sample_per_task)
+       
+       
+        # (b) Reduce current exemplar set to reserve the space for the new dataset
+        for storage in self.task_memory.values():
+            storage.reduce(num_sample_per_task)
+        
+        # (c) Randomly choose some samples from new task and save them to the memory
+        self.task_memory[self.task_count] = Memory()  # Initialize the memory slot
+        randind = torch.randperm(len(train_loader.dataset))[:num_sample_per_task]  # randomly sample some data
+        for ind in randind:  # save it to the memory
+            self.task_memory[self.task_count].append(train_loader.dataset[ind])
+    
+    def learn_batch(self, train_loader, val_loader=None):
+
+        # 1.Update model as normal
+        super(GEM, self).learn_batch(train_loader, val_loader)
+
+        # 2.Randomly decide the images to stay in the memory
         self.task_count += 1
         # (a) Decide the number of samples for being saved
         num_sample_per_task = self.memory_size // self.task_count
@@ -48,7 +148,52 @@ class Naive_Rehearsal(NormalNN):
         randind = torch.randperm(len(train_loader.dataset))[:num_sample_per_task]  # randomly sample some data
         for ind in randind:  # save it to the memory
             self.task_memory[self.task_count].append(train_loader.dataset[ind])
+        # (d) Cache the data for faster processing
+        for t, mem in self.task_memory.items():
+            # Concatenate all data in each task
+            mem_loader = torch.utils.data.DataLoader(mem,
+                                                     batch_size=len(mem),
+                                                     shuffle=False,
+                                                     num_workers=2)
+            assert len(mem_loader)==1,'The length of mem_loader should be 1'
+            for i, (mem_input, mem_target, mem_task) in enumerate(mem_loader):
+                if self.gpu:
+                    mem_input = mem_input.cuda()
+                    mem_target = mem_target.cuda()
+            self.task_mem_cache[t] = {'data':mem_input,'target':mem_target,'task':mem_task}
 
+    def update_model(self, inputs, targets, tasks):
+
+        # compute gradient on previous tasks
+        if self.task_count > 0:
+            for t,mem in self.task_memory.items():
+                self.zero_grad()
+                # feed the data from memory and collect the gradients
+                mem_out = self.forward(self.task_mem_cache[t]['data'])
+                mem_loss = self.criterion(mem_out, self.task_mem_cache[t]['target'], self.task_mem_cache[t]['task'])
+                mem_loss.backward()
+                # Store the grads
+                self.task_grads[t] = self.grad_to_vector()
+
+        # now compute the grad on the current minibatch
+        out = self.forward(inputs)
+        loss = self.criterion(out, targets, tasks)
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        # check if gradient violates constraints
+        if self.task_count > 0:
+            current_grad_vec = self.grad_to_vector()
+            mem_grad_vec = torch.stack(list(self.task_grads.values()))
+            dotp = current_grad_vec * mem_grad_vec
+            dotp = dotp.sum(dim=1)
+            if (dotp < 0).sum() != 0:
+                new_grad = self.project2cone2(current_grad_vec, mem_grad_vec)
+                # copy gradients back
+                self.vector_to_grad(new_grad)
+
+        self.optimizer.step()
+        return loss.detach(), out
 
 class Naive_Rehearsal_SI(Naive_Rehearsal, SI):
 

@@ -1,7 +1,7 @@
 import torch
 from .default import NormalNN
 from .regularization import SI, EWC, EWC_online
-from .exp_replay import Naive_Rehearsal, GEM
+from .exp_replay import Naive_Rehearsal, GEM, Fed_Memory
 from modules.criterions import BCEauto
 
 def init_zero_weights(m):
@@ -98,6 +98,11 @@ def EWC_online_reset_optim(agent_config):
     agent.reset_optimizer = True
     return agent
 
+def Fed_Memory_100(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory(agent_config)
+    agent.memory_size = 100
+    return agent
 
 def Naive_Rehearsal_100(agent_config):
     agent = Naive_Rehearsal(agent_config)
