@@ -35,6 +35,10 @@ class NormalNN(nn.Module):
         self.reset_optimizer = False
         self.valid_out_dim = 'ALL'  # Default: 'ALL' means all output nodes are active
                                     # Set a interger here for the incremental class scenario
+        
+        # self.task_numbers = 100
+        # self.n_max_label = 100
+        # self.neural_task_memory = {str(x+1): { y:[] for y in range(self.n_max_label)} for x in range(self.task_numbers)}
 
     def init_optimizer(self):
         optimizer_arg = {'params':self.model.parameters(),
@@ -77,6 +81,7 @@ class NormalNN(nn.Module):
 
         # Replace the task-dependent function
         model.logits = MethodType(new_logits, model)
+        
         # Load pre-trained weights
         if cfg['model_weights'] is not None:
             print('=> Load model weights:', cfg['model_weights'])

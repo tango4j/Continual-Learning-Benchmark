@@ -39,6 +39,7 @@ ebd_input = torch.randn(opt.batch_size, length_ebd, opt.d_model).cuda()
 repeat = 10
 for _ in range(repeat):
     ebd_input = slf_attn(ebd_input, ebd_input, ebd_input)
+
 # class EncoderLayer(nn.Module):
     # ''' Compose with two layers '''
 

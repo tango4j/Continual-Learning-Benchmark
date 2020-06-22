@@ -10,7 +10,12 @@ from dataloaders.datasetGen import SplitGen, PermutedGen
 import agents
 import ipdb
 
+
 def run(args):
+    # with open('print_test.txt', 'w') as fp:
+        # print('hello world', file=fp)
+    # sys.stdout = open("print_test.txt", "w")
+
     if not os.path.exists('outputs'):
         os.mkdir('outputs')
 
@@ -52,7 +57,7 @@ def run(args):
         train_dataset_all = torch.utils.data.ConcatDataset(train_dataset_splits.values())
         val_dataset_all = torch.utils.data.ConcatDataset(val_dataset_splits.values())
         train_loader = torch.utils.data.DataLoader(train_dataset_all,
-                                                   batch_size=args.batch_size, shuffle=True, num_workers=args.workers)
+                                                   batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
         val_loader = torch.utils.data.DataLoader(val_dataset_all,
                                                  batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
 
@@ -67,7 +72,7 @@ def run(args):
             train_name = task_names[i]
             print('======================',train_name,'=======================')
             train_loader = torch.utils.data.DataLoader(train_dataset_splits[train_name],
-                                                        batch_size=args.batch_size, shuffle=True, num_workers=args.workers)
+                                                        batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
             val_loader = torch.utils.data.DataLoader(val_dataset_splits[train_name],
                                                       batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
 
@@ -87,7 +92,8 @@ def run(args):
                                                          batch_size=args.batch_size, shuffle=False,
                                                          num_workers=args.workers)
                 acc_table[val_name][train_name] = agent.validation(val_loader)
-
+    
+    # sys.stdout.close()
     return acc_table, task_names
 
 def get_args(argv):
@@ -135,12 +141,13 @@ def get_args(argv):
     args = parser.parse_args(argv)
     return args
 
-if __name__ == '__main__':
-    # ipdb.set_trace()
+def main(argv_list):
+    sys.argv = argv_list
     args = get_args(sys.argv[1:])
     reg_coef_list = args.reg_coef
     avg_final_acc = {}
 
+    torch.manual_seed(0)
     # The for loops over hyper-paramerters or repeats
     for reg_coef in reg_coef_list:
         args.reg_coef = reg_coef
@@ -173,3 +180,8 @@ if __name__ == '__main__':
             print('mean:', avg_final_acc[reg_coef].mean(), 'std:', avg_final_acc[reg_coef].std())
     for reg_coef,v in avg_final_acc.items():
         print('reg_coef:', reg_coef,'mean:', avg_final_acc[reg_coef].mean(), 'std:', avg_final_acc[reg_coef].std())
+
+if __name__ == '__main__':
+    print('Main script is executed.')
+    # ipdb.set_trace()
+

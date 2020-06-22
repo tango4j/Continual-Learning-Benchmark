@@ -151,7 +151,6 @@ class Fed_Memory_Rehearsal(NormalNN):
         ### +--------------------------------
         self.ch = 1
         self.n_image_pixels = 32*32
-        self.image_shape = (self.ch, 32, 32)
         self.task_numbers = 100
         self.n_max_label = 100
         self.ls = 1000
@@ -166,9 +165,6 @@ class Fed_Memory_Rehearsal(NormalNN):
         # self.mha_optimizer = torch.optim.SGD(MHA_params, lr=0.0001)
         self.neural_task_memory = {str(x+1): { y: {z: [] for z in range(self.ls)} for y in range(self.n_max_label)} for x in range(self.task_numbers)}
         # self.neural_task_memory = {str(x+1): [] for x in range(self.task_numbers)}
-
-
-        self.noise_test = False
 
     def reqGradToggle(self, _bool):
         for layer in self.model.parameters():
@@ -186,31 +182,16 @@ class Fed_Memory_Rehearsal(NormalNN):
                 pred = preds
         loss = self.criterion_fn(pred, target)
         return loss 
+
     
-    # @staticmethod
-    def saveAsTuple(self, M_imaged, target, task, fed_memory_data):
-        M = M_imaged.squeeze(0)
-        for k in range(M.shape[0]):
-            if self.noise_test == True:
-                # print("Noise TEST on....!")
-                M_tup = ( torch.randn(self.image_shape), target[k].detach().cpu().numpy().item(), task[k])
-            else:
-                M_tup = (M[k].view(self.image_shape), target[k].detach().cpu().numpy().item(), task[k])
-            fed_memory_data.append(M_tup)
-
-        return fed_memory_data
-
-    def getCompressedMemory(self, train_loader, num_sample_per_task, noise_test=False):
-        self.noise_test = noise_test
-        
-        fed_memory_data = []
-        max_n_train_mha = 10 if not noise_test else 1
+    def getCompressedMemory(self, new_train_loader):
+        max_n_train_mha = 1
         for epoch_idx in range(max_n_train_mha):
             print("*Compressed Mem Epoch: {}/{}".format(epoch_idx+1, max_n_train_mha) )
             batch_acc = AverageMeter()
-            for i, (input, target, task) in enumerate(train_loader):
+            for i, (input, target, task) in enumerate(new_train_loader):
                 # print("task : ", task[0], flush=True)
-                if i == len(train_loader)-1:
+                if i == len(new_train_loader)-1:
                     break
                 if self.gpu:
                     with torch.no_grad():
@@ -275,6 +256,7 @@ class Fed_Memory_Rehearsal(NormalNN):
                         
                     except:
                         ipdb.set_trace()
+
                     MHA_output = self.model.forward(M_imaged)
                     # out_box.append(MHA_output['All'])
                     # label_box.append(this_target)
@@ -287,8 +269,6 @@ class Fed_Memory_Rehearsal(NormalNN):
                         class_loss = self.aggregatedClassLoss(MHA_output, this_target)
                     except:
                         ipdb.set_trace()
-                    if epoch_idx == max_n_train_mha -1:
-                        fed_memory_data = self.saveAsTuple(M_imaged.detach().cpu(), target, task, fed_memory_data)
                     # class_loss.backward(retain_graph=True)
                     class_loss.backward()
                     self.mha_optimizer.step()
@@ -297,20 +277,13 @@ class Fed_Memory_Rehearsal(NormalNN):
                     batch_acc = accumulate_acc(MHA_output, this_target, task, batch_acc)
                     # acc_label = accumulate_acc(batch_MHA_output, batch_target, task, acc_label)
                     c_loss += class_loss.detach().cpu().numpy()
-                # print("Mini-Batch {}/{} ACC: {:2.4f} Loss: {:2.4f}".format(i+1, len(train_loader), acc.avg, c_loss))
+                # print("Mini-Batch {}/{} ACC: {:2.4f} Loss: {:2.4f}".format(i+1, len(new_train_loader), acc.avg, c_loss))
                 # batch_acc = accumulate_acc(MHA_output, this_target, task, batch_acc)
             print("Epoch Acc {}/{} ACC: {:2.4f} ".format(epoch_idx+1, max_n_train_mha, batch_acc.avg))
             batch_acc = accumulate_acc(MHA_output, this_target, task, batch_acc)
-        return fed_memory_data
+        return None
     
     def learn_batch(self, train_loader, val_loader=None):
-        # method = "Fed_Memory_Rehearsal" 
-        method = "No_Rehearsal" 
-        # method = "Naive_Rehearsal"
-        # method = "noise_Rehearsal"
-
-
-
         # 1.Combine training set
         dataset_list = []
 
@@ -324,10 +297,7 @@ class Fed_Memory_Rehearsal(NormalNN):
 
         ### We assume memory size is full 
         dataset_list *= max(len(train_loader.dataset)//self.memory_size,1)  # Let old data: new data = 1:1 ### Not exactly 1:1
-        
-        if method == "No_Rehearsal":
-            data_list = []
-        
+
         dataset_list.append(train_loader.dataset)
 
         ### Wrap mixed dataset (dataset_list).
@@ -344,6 +314,7 @@ class Fed_Memory_Rehearsal(NormalNN):
             
 
         # 3.Randomly decide the images to stay in the memory
+    
         self.task_count += 1
        
         # (a) Decide the number of samples for being saved
@@ -356,37 +327,19 @@ class Fed_Memory_Rehearsal(NormalNN):
         # (b) Reduce current exemplar set to reserve the space for the new dataset
         for storage in self.task_memory.values():
             storage.reduce(num_sample_per_task)
-
-        self.task_memory[self.task_count] = Memory()  # Initialize the memory slot
-        print("============================  METHOD : {}".format(method))
+       
         if method == "Naive_Rehearsal":
-            # (c) Randomly choose some samples from new task and save them to the memory
-            randind = torch.randperm(len(train_loader.dataset))[:num_sample_per_task]  # randomly sample some data
-            for ind in randind:  # save it to the memory
-                self.task_memory[self.task_count].append(train_loader.dataset[ind])
-        
-        elif method == "noise_Rehearsal":
-            self.reqGradToggle(False)  ### Freeze the model
-            fed_memory_data = self.getCompressedMemory(train_loader, num_sample_per_task, noise_test=True)
-            self.reqGradToggle(True)  ### Freeze the model
-            # self.task_memory[self.task_count].extend(fed_memory_data)
-            randind = torch.randperm(len(fed_memory_data))[:num_sample_per_task]  # randomly sample some data
-            for ind in randind:  # save it to the memory
-                self.task_memory[self.task_count].append(fed_memory_data[ind])
-
-        elif method == "No_Rehearsal":
-            pass 
-
+        # (c) Randomly choose some samples from new task and save them to the memory
+        self.task_memory[self.task_count] = Memory()  # Initialize the memory slot
+        randind = torch.randperm(len(train_loader.dataset))[:num_sample_per_task]  # randomly sample some data
+        for ind in randind:  # save it to the memory
+            self.task_memory[self.task_count].append(train_loader.dataset[ind])
         elif method == "Fed_Memory_Rehearsal":
             self.reqGradToggle(False)  ### Freeze the model
-            fed_memory_data = self.getCompressedMemory(train_loader, num_sample_per_task, noise_test=False)
+            self.getCompressedMemory(new_train_loader)
             self.reqGradToggle(True)  ### Freeze the model
-            # self.task_memory[self.task_count].extend(fed_memory_data)
-            randind = torch.randperm(len(fed_memory_data))[:num_sample_per_task]  # randomly sample some data
-            for ind in randind:  # save it to the memory
-                self.task_memory[self.task_count].append(fed_memory_data[ind])
         else:
-            raise ValueError('method name {} does not exist.'.format(method))
+            raise ValueError('method name {} does not exist.'.format(method ) )
         # ipdb.set_trace()
     def org_learn_batch(self, train_loader, val_loader=None):
         # 1.Combine training set

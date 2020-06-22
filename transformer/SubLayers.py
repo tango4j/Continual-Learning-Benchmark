@@ -1,9 +1,9 @@
 ''' Define the sublayers in encoder/decoder layer '''
 import numpy as np
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-# from transformer.Modules import ScaledDotProductAttention
-from Modules import ScaledDotProductAttention
+from transformer.Modules import ScaledDotProductAttention
 import ipdb
 
 __author__ = "Yu-Hsiang Huang"
@@ -34,27 +34,64 @@ class MultiHeadAttentionMemory(nn.Module):
         sz_b, len_q, len_k, len_v = _q.size(0), _q.size(1), k.size(1), v.size(1)
 
         residual = _q
+        # qmax = torch.max(torch.abs(_q.view(-1)))
+        # print("0 qmax {}".format(qmax))
+        
 
         # Pass through the pre-attention projection: b x lq x (n*dv)
         # Separate different heads: b x lq x n x dv
-        # ipdb.set_trace()
         _q = self.w_qs(_q).view(sz_b, len_q, n_head, d_k)
         k = self.w_ks(k).view(sz_b, len_k, n_head, d_k)
         v = self.w_vs(v).view(sz_b, len_v, n_head, d_v)
-
+        
+        # qmax = torch.max(torch.abs(_q.view(-1)))
+        # print("1 qmax {}".format(qmax))
+        
         # Transpose for attention dot product: b x n x lq x dv
         _q, k, v = _q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-
+        
+        # print("After transpose 1,2", _q.shape)
         if mask is not None:
             mask = mask.unsqueeze(1)   # For head axis broadcasting.
+        
+        # print("After mask unsqueeze", _q.shape)
 
         _q, attn = self.attention(_q, k, v, mask=mask)
+        # print("After attention", _q.shape)
+        
+        # qmax = torch.max(torch.abs(_q.view(-1)))
+        # print("2 qmax {}".format(qmax))
 
         # Transpose to move the head dimension back: b x lq x n x dv
         # Combine the last two dimensions to concatenate all the heads together: b x lq x (n*dv)
         _q = _q.transpose(1, 2).contiguous().view(sz_b, len_q, -1)
-        _q = self.dropout(self.fc(_q))
+
+        # print("After _q.transpose(1, 2).contiguous().view(sz_b, len_q, -1)", _q.shape)
+
+        # _q = self.dropout(self.fc(_q))
+        _q = self.fc(_q)
+        # print("After dropout: ", _q.shape)
+        if _q.shape != residual.shape:
+            _q = _q.unsqueeze(dim=2)
+        
+        # qmax = torch.max(torch.abs(_q.view(-1)))
+        # print("3 qmax {}".format(qmax))
+        
+        # try:
+
+        # mu = 0.0
+        # mu = 0.1
+        mu = 1.0
+        # _q = _q/torch.max(torch.abs(_q)) + mu * residual/torch.max(torch.abs(residual))
+        # _q = _q/torch.max(torch.abs(_q))  + residual
+        qmax = torch.max(torch.abs(_q.view(-1)))
+        # print("1 qmax {}".format(qmax))
+        rmax = torch.max(torch.abs(residual))
+        # print("qmax {} res_max {}".format(qmax, rmax))
+        # _q = _q  + mu * residual
         _q += residual
+        # except:
+            # ipdb.set_trace()
 
         _q = self.layer_norm(_q)
 
