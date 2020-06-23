@@ -8,7 +8,7 @@ from dataloaders.wrapper import Storage
 import ipdb
 
 from utils.metric import accuracy, AverageMeter, Timer
-# from SubLayers import MultiHeadAttentionMemory
+
 from transformer.SubLayers import MultiHeadAttentionMemory
 
 class maxPoolFeedForward(nn.Module):
@@ -161,13 +161,13 @@ class Fed_Memory_Rehearsal(NormalNN):
         ### | Model Specification
         ### +--------------------------------
         self.MHA_model = MHA(self.n_image_pixels)
-        MHA_params = self.MHA_model.parameters()
-        self.mha_optimizer = torch.optim.Adam(MHA_params, lr=0.0001)
+        self.MHA_params = self.MHA_model.parameters()
+        self.mha_optimizer = torch.optim.Adam(self.MHA_params, lr=0.01)
+        self.memory_init_optimizer()
+
         # self.mha_optimizer = torch.optim.SGD(MHA_params, lr=0.0001)
         self.neural_task_memory = {str(x+1): { y: {z: [] for z in range(self.ls)} for y in range(self.n_max_label)} for x in range(self.task_numbers)}
         # self.neural_task_memory = {str(x+1): [] for x in range(self.task_numbers)}
-
-
         self.noise_test = False
 
     def reqGradToggle(self, _bool):
@@ -175,7 +175,6 @@ class Fed_Memory_Rehearsal(NormalNN):
             layer.requires_grad = _bool
         self.model.train(_bool)
     
-    # @staticmethod
     def aggregatedClassLoss(self, preds, target):
         if isinstance(self.valid_out_dim, int):  
             pred = preds['All'][:,:self.valid_out_dim]
@@ -187,12 +186,10 @@ class Fed_Memory_Rehearsal(NormalNN):
         loss = self.criterion_fn(pred, target)
         return loss 
     
-    # @staticmethod
     def saveAsTuple(self, M_imaged, target, task, fed_memory_data):
         M = M_imaged.squeeze(0)
         for k in range(M.shape[0]):
             if self.noise_test == True:
-                # print("Noise TEST on....!")
                 M_tup = ( torch.randn(self.image_shape), target[k].detach().cpu().numpy().item(), task[k])
             else:
                 M_tup = (M[k].view(self.image_shape), target[k].detach().cpu().numpy().item(), task[k])
@@ -200,11 +197,165 @@ class Fed_Memory_Rehearsal(NormalNN):
 
         return fed_memory_data
 
+    def intraClassPredict(self, input, target, task):
+        org_shape = input[0, :].shape
+
+        embed_memory_data = []
+        data_count_check = {"old": 0, "new": 0, "org": 0}
+        data_count_check['org'] += len(task)
+
+        # if i == len(train_loader)-1:
+            # break
+        new_input = torch.zeros(*input.shape)
+        if self.gpu:
+            with torch.no_grad():
+                input = input.cuda()
+                target = target.cuda()
+
+        target_np = target.detach().cpu().numpy()
+        task_np = np.array(task)
+        current_task_str = self.train_info[1]
+        # print("------ tasks {} current_task_str {} ".format(set(task), current_task_str) )
+
+        new_task_bool = torch.tensor(np.array(task) == current_task_str)
+        old_task_bool = torch.tensor(np.array(task) != current_task_str)
+
+        new_input_tensor = input[new_task_bool]
+        new_target_tensor = target[new_task_bool]
+        new_task_list = tuple( task_np[new_task_bool.cpu().numpy()].tolist() )
+        
+        old_input_tensor = input[old_task_bool]
+        old_target_tensor = target[old_task_bool]
+        old_task_list = tuple( task_np[old_task_bool.cpu().numpy()].tolist() )
+
+        try:
+            assert (len(new_task_list) + len(old_task_list)) == len(task), "[ERROR] Task count is somewhat off."
+        except:
+            ipdb.set_trace()
+        data_count_check['new'] += len(new_task_list)
+        data_count_check['old'] += len(old_task_list)
+        
+        ### First go through new task samples (Needs to be converted)
+        try:
+            new_target_labels = sorted(set(new_target_tensor.cpu().numpy()))
+        except:
+            ipdb.set_trace()
+
+        for idx, label in enumerate(new_target_labels):
+            task_idx = task[idx]
+            global_label_bool_np = (target_np == label) * (new_task_bool.numpy())
+            global_label_bool_tensor = torch.tensor(global_label_bool_np)
+            
+            this_target = target[global_label_bool_tensor]
+
+            M_before_integ = input[global_label_bool_tensor, :].view(-1, self.ch, self.n_image_pixels)
+            M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
+            
+            M, attention = self.MHA_model(M_in)
+            M_imaged = M.view(-1, *org_shape)
+            
+            if len(M_imaged) == 3:
+                M_imaged = M_imaged.unsqueeze(0)
+            
+            new_input[global_label_bool_tensor] = M_imaged.detach().cpu()
+
+            # print("=== Saving label-wise memory embedding...{}/{}".format(idx, len(new_target_labels)))
+            # print("length embed_memory_data : ", len(embed_memory_data) )
+           
+        ### Second, go through old samples that are already memory samples
+        if old_input_tensor.shape[0] != 0:
+            new_input[old_task_bool, :] = input[old_task_bool, :].cpu()
+        
+        assert (data_count_check['old'] + data_count_check['new']) == data_count_check['org'], "[ERROR] Sample count is somewhat off."
+        # print("===== Data quantity check passed! :", data_count_check)
+
+        return new_input
+
+    def saveEmbeddingMemory(self, train_loader, num_sample_per_task, noise_test=False):
+        self.noise_test = noise_test
+        
+        embed_memory_data = []
+        max_n_train_mha = 10 if not noise_test else 1
+        current_task_str = self.train_info[1]
+        
+        data_count_check = {"old": 0, "new": 0, "org": 0}
+        for i, (input, target, task) in enumerate(train_loader):
+            print("Saving memory embedding batch {}/{}".format(i+1, len(train_loader)))
+            data_count_check['org'] += len(task)
+
+            # if i == len(train_loader)-1:
+                # break
+            if self.gpu:
+                with torch.no_grad():
+                    input = input.cuda()
+                    target = target.cuda()
+
+            target_np = target.detach().cpu().numpy()
+            task_np = np.array(task)
+            new_task_bool = torch.tensor(np.array(task) == current_task_str)
+            old_task_bool = torch.tensor(np.array(task) != current_task_str)
+
+            new_input_tensor = input[new_task_bool]
+            new_target_tensor = target[new_task_bool]
+            new_task_list = tuple( task_np[new_task_bool.cpu().numpy()].tolist() )
+            
+            old_input_tensor = input[old_task_bool]
+            old_target_tensor = target[old_task_bool]
+            old_task_list = tuple( task_np[old_task_bool.cpu().numpy()].tolist() )
+            try:
+                assert (len(new_task_list) + len(old_task_list)) == len(task), "[ERROR] Task count is somewhat off."
+            except:
+                ipdb.set_trace()
+            data_count_check['new'] += len(new_task_list)
+            data_count_check['old'] += len(old_task_list)
+            
+            ### First go through new task samples (Needs to be converted)
+            try:
+                new_target_labels = sorted(set(new_target_tensor.cpu().numpy()))
+            except:
+                ipdb.set_trace()
+
+            for idx, label in enumerate(new_target_labels):
+                task_idx = task[idx]
+                
+                label_bool_tensor = torch.tensor(new_target_tensor.cpu().numpy() == label)
+                this_target = new_target_tensor[label_bool_tensor]
+                
+                M_before_integ = input[label_bool_tensor, :].view(-1, self.ch, self.n_image_pixels)
+                M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
+                
+                M, attention = self.MHA_model(M_in)
+                M_imaged = M.view(M_before_integ.shape)
+                
+                if len(M_imaged) == 3:
+                    M_imaged = M_imaged.unsqueeze(0)
+                
+                embed_memory_data = self.saveAsTuple(M_imaged.detach().cpu(), 
+                                                     this_target, 
+                                                     new_task_list, 
+                                                     embed_memory_data)
+
+                # print("=== Saving label-wise memory embedding...{}/{}".format(idx, len(new_target_labels)))
+                # print("length embed_memory_data : ", len(embed_memory_data) )
+               
+            ### Second, go through old samples that are already memory samples
+            if old_input_tensor.shape[0] != 0:
+                embed_memory_data = self.saveAsTuple(old_input_tensor.detach().cpu(), 
+                                                     old_target_tensor, 
+                                                     old_task_list,
+                                                     embed_memory_data)
+                
+        assert (data_count_check['old'] + data_count_check['new']) == data_count_check['org'], "[ERROR] Sample count is somewhat off."
+        print("===== Data quantity check passed! :", data_count_check)
+        # ipdb.set_trace()
+        return embed_memory_data
+
     def getCompressedMemory(self, train_loader, num_sample_per_task, noise_test=False):
         self.noise_test = noise_test
         
         fed_memory_data = []
         max_n_train_mha = 10 if not noise_test else 1
+        
         for epoch_idx in range(max_n_train_mha):
             print("*Compressed Mem Epoch: {}/{}".format(epoch_idx+1, max_n_train_mha) )
             batch_acc = AverageMeter()
@@ -227,17 +378,15 @@ class Fed_Memory_Rehearsal(NormalNN):
                 acc = AverageMeter()
                 c_loss = 0
                 out_box, label_box = [], []
+                
                 for idx, label in enumerate(labels):
                     acc_label = AverageMeter()
                     task_idx = task[idx]
-                    # self.neural_task_memory[task_idx][label] = \
-                        # input[target==label, :].view(-1, self.ch, self.n_image_pixels)
                     this_target = target[target == label]
                     
                     M_before_integ = input[target == label, :].view(-1, self.ch, self.n_image_pixels)
                     M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
                     
-                    # if task_idx == '1' and epoch_idx == 0:
                     if epoch_idx == 0:
                         M_before_integ = input[target == label, :].view(-1, self.ch, self.n_image_pixels)
                         M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
@@ -246,71 +395,42 @@ class Fed_Memory_Rehearsal(NormalNN):
                         M_before_integ = M_in
 
                     self.mha_optimizer.zero_grad()
-                    try:
-                        # print("M_in dim:", M_in.shape)
-                        # M, attention = self.mul_head_attn(M_in, M_in, M_in)
-                        M, attention = self.MHA_model(M_in)
-                    except:
-                        ipdb.set_trace()
+                    M, attention = self.MHA_model(M_in)
+                    ipdb.set_trace()
                     # M = M[0,:,:]
                     # else:
                         # M = self.neural_task_memory[task_idx][label]
-                    try:
-                        # ipdb.set_trace()
-                        # M = M[0]
-                        M_imaged = M.view(M_before_integ.shape)
-                        
-                        # M = M.mean(dim=1)
-                        # M = M[0][-1].unsqueeze(0)
-                        # this_target = target[target == label][0].unsqueeze(0)
-                        # M_imaged = M
-                    except:
-                        ipdb.set_trace()
-                    try:
-                        if len(M_imaged) == 3:
-                            M_imaged = M_imaged.unsqueeze(0)
+                    M_imaged = M.view(M_before_integ.shape)
+                    
+                    if len(M_imaged) == 3:
+                        M_imaged = M_imaged.unsqueeze(0)
+                    self.neural_task_memory[task_idx][label][i] = M_imaged.detach().cpu()
 
-                        self.neural_task_memory[task_idx][label][i] = M_imaged.detach().cpu()
-                        # print("Shape of M_imaged", M_imaged.shape)
-                        
-                    except:
-                        ipdb.set_trace()
                     MHA_output = self.model.forward(M_imaged)
-                    # out_box.append(MHA_output['All'])
-                    # label_box.append(this_target)
-                    # print("Label: {} ACC: {}".format(label, acc_label.avg))
-                    # print("M:", M[0][0][:])
-                    # batch_MHA_output = {'All' :torch.cat(out_box, dim=0) }
-                    # batch_target = torch.cat(label_box, dim=0)
-                    try:
-                        # class_loss = self.aggregatedClassLoss(batch_MHA_output, batch_target)
-                        class_loss = self.aggregatedClassLoss(MHA_output, this_target)
-                    except:
-                        ipdb.set_trace()
+                    class_loss = self.aggregatedClassLoss(MHA_output, this_target)
+                    
                     if epoch_idx == max_n_train_mha -1:
                         fed_memory_data = self.saveAsTuple(M_imaged.detach().cpu(), target, task, fed_memory_data)
-                    # class_loss.backward(retain_graph=True)
+
                     class_loss.backward()
                     self.mha_optimizer.step()
                     
-                    acc = accumulate_acc(MHA_output, this_target, task, acc)
-                    batch_acc = accumulate_acc(MHA_output, this_target, task, batch_acc)
-                    # acc_label = accumulate_acc(batch_MHA_output, batch_target, task, acc_label)
+                    acc = accumulate_acc(MHA_output.detach(), this_target.detach(), task, acc)
+                    batch_acc = accumulate_acc(MHA_output.detach(), this_target.detach(), task, batch_acc)
+
                     c_loss += class_loss.detach().cpu().numpy()
-                # print("Mini-Batch {}/{} ACC: {:2.4f} Loss: {:2.4f}".format(i+1, len(train_loader), acc.avg, c_loss))
-                # batch_acc = accumulate_acc(MHA_output, this_target, task, batch_acc)
+
             print("Epoch Acc {}/{} ACC: {:2.4f} ".format(epoch_idx+1, max_n_train_mha, batch_acc.avg))
             batch_acc = accumulate_acc(MHA_output, this_target, task, batch_acc)
         return fed_memory_data
     
     def learn_batch(self, train_loader, val_loader=None):
         # method = "Fed_Memory_Rehearsal" 
-        method = "No_Rehearsal" 
+        method = "Memory_Embedding_Rehearsal" 
+        # method = "No_Rehearsal" 
         # method = "Naive_Rehearsal"
         # method = "noise_Rehearsal"
-
-
-
+        
         # 1.Combine training set
         dataset_list = []
 
@@ -385,9 +505,86 @@ class Fed_Memory_Rehearsal(NormalNN):
             randind = torch.randperm(len(fed_memory_data))[:num_sample_per_task]  # randomly sample some data
             for ind in randind:  # save it to the memory
                 self.task_memory[self.task_count].append(fed_memory_data[ind])
+        
+        elif method == "Memory_Embedding_Rehearsal":
+            self.reqGradToggle(False)  ### Freeze the model
+            embed_memory_data = self.saveEmbeddingMemory(train_loader, num_sample_per_task, noise_test=False)
+            self.reqGradToggle(True)  ### Freeze the model
+            randind = torch.randperm(len(embed_memory_data))[:num_sample_per_task]  # randomly sample some data
+            for ind in randind:  # save it to the memory
+                self.task_memory[self.task_count].append(embed_memory_data[ind])
         else:
             raise ValueError('method name {} does not exist.'.format(method))
         # ipdb.set_trace()
+    
+    def predict(self, inputs):
+        self.model.eval()
+        out = self.forward(inputs)
+        for t in out.keys():
+            out[t] = out[t].detach()
+        return out
+    
+    def class_wise_predict(self, inputs, target, task):
+        self.model.eval()
+        self.MHA_model.eval()
+        labels = sorted(list(set(target.cpu().numpy())))
+        
+        out_list = []
+        target_list = []
+        for idx, label in enumerate(labels):
+            task_idx = task[idx]
+            this_target = target[target == label]
+            
+            M_before_integ = inputs[target == label, :].view(-1, self.ch, self.n_image_pixels)
+            M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
+            
+            M, attention = self.MHA_model(M_in)
+            M_imaged = M.view(M_before_integ.shape).detach()
+            
+            if len(M_imaged) == 3:
+                M_imaged = M_imaged.unsqueeze(0)
+            out_list.append(M_imaged) 
+            target_list.append(this_target) 
+        # out = self.forward(inputs)
+        M_imaged_batch = torch.cat(out_list, dim=0).view(-1, *self.image_shape)
+        out = self.forward(M_imaged_batch)
+        new_target = torch.cat(target_list, dim=0)
+        try:
+            for t in out.keys():
+                out[t] = out[t].detach()
+        except:
+            ipdb.set_trace()
+        return out, new_target
+    
+    def validation(self, dataloader):
+        # This function doesn't distinguish tasks.
+        batch_timer = Timer()
+        acc = AverageMeter()
+        batch_timer.tic()
+
+        orig_mode = self.training
+        self.eval()
+        for i, (input, target, task) in enumerate(dataloader):
+
+            if self.gpu:
+                with torch.no_grad():
+                    input = input.cuda()
+                    target = target.cuda()
+            # output = self.predict(input)
+            output, new_target = self.class_wise_predict(input, target, task)
+            target = new_target
+
+            # Summarize the performance of all tasks, or 1 task, depends on dataloader.
+            # Calculated by total number of data.
+            acc = accumulate_acc(output, target, task, acc)
+
+        self.train(orig_mode)
+
+        self.log(' * Val Acc {acc.avg:.3f}, Total time {time:.2f}'
+              .format(acc=acc,time=batch_timer.toc()))
+        return acc.avg
+
+
     def org_learn_batch(self, train_loader, val_loader=None):
         # 1.Combine training set
         dataset_list = []
@@ -442,11 +639,120 @@ class Fed_Memory_Rehearsal(NormalNN):
         for ind in randind:  # save it to the memory
             self.task_memory[self.task_count].append(train_loader.dataset[ind])
     
+    def memory_init_optimizer(self):
+        optimizer_arg = {'params': list(self.model.parameters()) + list(self.MHA_model.parameters()),
+                         'lr': 0.001,
+                         'weight_decay':self.config['weight_decay']}
+        if self.config['optimizer'] in ['SGD','RMSprop']:
+            optimizer_arg['momentum'] = self.config['momentum']
+        elif self.config['optimizer'] in ['Rprop']:
+            optimizer_arg.pop('weight_decay')
+        elif self.config['optimizer'] == 'amsgrad':
+            optimizer_arg['amsgrad'] = True
+            self.config['optimizer'] = 'Adam'
+        
+        print("====== memory_init_optimizer ======")
+        self.memory_optimizer = torch.optim.__dict__[self.config['optimizer']](**optimizer_arg)
+        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.memory_optimizer, 
+                                                              milestones=self.config['schedule'],
+                                                              gamma=0.1)
+    
+    def memory_update_model(self, input, target, tasks):
+        ### Go through memory representation generator first
+        labels = sorted(list(set(target.cpu().numpy())))
+        input_list = []
+        task_list = []
+        target_list = []
+        tasks_array = np.array(tasks)
+        self.MHA_model.train(True)
+        
+        for idx, label in enumerate(labels):
+            task_idx = tasks[idx]
+            this_target = target[target == label].detach().cpu()
+            
+            M_before_integ = input[target == label, :].view(-1, self.ch, self.n_image_pixels)
+            M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
+            
+            M, attention = self.MHA_model(M_in)
+            M_imaged = M.view(M_before_integ.shape)
+            
+            if len(M_imaged) == 3:
+                M_imaged = M_imaged.unsqueeze(0)
+            
+            M_embed, attn = self.MHA_model(M_imaged)
+            M_imaged_embed = M_embed.view(M_before_integ.shape)
+            
+            input_list.append(M_imaged_embed)
+            target_list.append(this_target)
+            task_list.extend(tasks_array[ (target.cpu().numpy() == label) ].tolist() )
+            
+        aggr_embed_inputs = torch.cat(input_list, dim=0).view(-1, *self.image_shape).cuda()
+        aggr_targets = torch.cat(target_list, dim=0).cuda()
+        
+        aggr_targets = aggr_targets.cuda()
+
+        aggr_tasks = tuple(task_list)
+
+        ### ########################
+        out = self.forward(aggr_embed_inputs)
+        loss = self.criterion(out, aggr_targets, aggr_tasks)
+        # self.optimizer.zero_grad()
+        # print("Before backward model : ", self.sampleWeights('model') )
+        # print("Before backward MHA: ", self.sampleWeights('MHA_model') )
+        self.memory_optimizer.zero_grad()
+        loss.backward()
+        self.memory_optimizer.step()
+        # print("AFTER backward model : ", self.sampleWeights('model') )
+        # print("AFTER backward MHA: ", self.sampleWeights('MHA_model') )
+
+        return loss.detach(), out, aggr_targets
+
+    def sampleWeights(self, name):
+        if name == 'model':
+            MHA_model_param_list = [ x for x in self.model.parameters() ]    
+        else: 
+            MHA_model_param_list = [ x for x in self.MHA_model.parameters() ]    
+
+        return MHA_model_param_list[0][0]
+
+
+    def restore_update_model(self, input, target, task):
+        ### Replace intputs of the current task to memory representations.
+        new_input = self.getMemoryRepresentations(input, target, task)
+        
+        if self.gpu:
+            with torch.no_grad():
+                new_input = new_input.cuda()
+                target = target.cuda()
+
+        out = self.forward(new_input)
+        loss = self.criterion(out, target, task)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        return loss.detach(), out, target
+    
+    def getMemoryRepresentations(self, input, target, task):
+        self.MHA_model.eval()
+        memory_replaced_input = self.intraClassPredict(input, target, task)
+        assert memory_replaced_input.shape == input.shape
+        if self.gpu:
+            memory_replaced_input = memory_replaced_input.cuda()
+        return memory_replaced_input
+        # for i in range(inputs.shape[0]):
+            # ipdb.set_trace()
+            
+
     def memory_learn_batch(self, train_loader, val_loader=None):
         # ipdb.set_trace()        
         if self.reset_optimizer:  # Reset optimizer before learning each task
-            self.log('Optimizer is reset!')
-            self.init_optimizer()
+            # self.log('Optimizer is reset!')
+            if self.train_info[0] == 0: ### If this is the first task
+                self.memory_init_optimizer()
+                self.log('Memory Optimizer is reset!')
+            else:
+                self.init_optimizer()
+                self.log('Regular Optimizer is reset!')
 
         for epoch in range(self.config['schedule'][-1]):
             data_timer = Timer()
@@ -468,15 +774,20 @@ class Fed_Memory_Rehearsal(NormalNN):
             batch_timer.tic()
             self.log('Itr\t\tTime\t\t  Data\t\t  Loss\t\tAcc')
             for i, (input, target, task) in enumerate(train_loader):
-
+                
                 data_time.update(data_timer.toc())  # measure data loading time
 
                 if self.gpu:
                     input = input.cuda()
                     target = target.cuda()
 
-                loss, output = self.update_model(input, target, task)
+                if self.train_info[0] == 0: ### If this is the first task
+                    loss, output, new_target = self.memory_update_model(input, target, task)
+                else: 
+                    loss, output, new_target = self.restore_update_model(input, target, task)
+
                 input = input.detach()
+                target = new_target
                 target = target.detach()
 
                 # measure accuracy and record loss

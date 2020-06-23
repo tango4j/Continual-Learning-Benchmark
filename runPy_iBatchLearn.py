@@ -70,6 +70,7 @@ def run(args):
         # Feed data to agent and evaluate agent's performance
         for i in range(len(task_names)):
             train_name = task_names[i]
+            agent.train_info= (i, train_name)
             print('======================',train_name,'=======================')
             train_loader = torch.utils.data.DataLoader(train_dataset_splits[train_name],
                                                         batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
