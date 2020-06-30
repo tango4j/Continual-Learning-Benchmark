@@ -58,6 +58,9 @@ class MLP(nn.Module):
         x = self.logits(x)
         return x
 
+def MLP1000_img_sz(img_sz):
+    return MLP(hidden_dim=1000, img_sz=img_sz)
+
 def MLP1000_MHA():
     return MLP_MHA(hidden_dim=1000)
 

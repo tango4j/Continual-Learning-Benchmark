@@ -98,11 +98,60 @@ def EWC_online_reset_optim(agent_config):
     agent.reset_optimizer = True
     return agent
 
-def Fed_Memory_4000(agent_config):
+######################################################
+
+def Memory_Embedding_Rehearsal_1100(agent_config):
     # agent = Naive_Rehearsal(agent_config)
-    agent = Fed_Memory_Rehearsal(agent_config)
-    agent.memory_size = 4000
+    agent = Fed_Memory_Rehearsal(agent_config, method='Memory_Embedding_Rehearsal')
+    agent.memory_size = 1100
     return agent
+
+def Compressed_Memory_Embedding_Rehearsal_1100(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Compressed_Memory_Embedding_Rehearsal')
+    agent.memory_size = 1100
+    return agent
+
+def No_Rehearsal_1100(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='No_Rehearsal')
+    agent.memory_size = 1100
+    return agent
+
+def Noise_Rehearsal_1100(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Noise_Rehearsal')
+    agent.memory_size = 1100
+    return agent
+
+###==================================================
+
+def Memory_Embedding_Rehearsal_4400(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Memory_Embedding_Rehearsal')
+    agent.memory_size = 4400
+    return agent
+
+def Compressed_Memory_Embedding_Rehearsal_4400(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Compressed_Memory_Embedding_Rehearsal')
+    agent.memory_size = 4400
+    return agent
+
+def No_Rehearsal_4400(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='No_Rehearsal')
+    agent.memory_size = 4400
+    return agent
+
+def Noise_Rehearsal_4400(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Noise_Rehearsal')
+    agent.memory_size = 4400
+    return agent
+
+
+######################################################3
 
 def Naive_Rehearsal_100(agent_config):
     agent = Naive_Rehearsal(agent_config)

@@ -19,9 +19,11 @@ class NormalNN(nn.Module):
                                     gpuid=[int]
         '''
         super(NormalNN, self).__init__()
-        self.log = print if agent_config['print_freq'] > 0 else lambda \
-            *args: None  # Use a void function to replace the print
+        # self.log = print if agent_config['print_freq'] > 0 else lambda \
+            # *args: None  # Use a void function to replace the print
+        self.log = agent_config['pI'].a_print ### Do append-write with print function using Aprint.a_print
         self.config = agent_config
+        
         # If out_dim is a dict, there is a list of tasks. The model will have a head for each task.
         self.multihead = True if len(self.config['out_dim'])>1 else False  # A convenience flag to indicate multi-head/task
         self.model = self.create_model()
@@ -60,7 +62,11 @@ class NormalNN(nn.Module):
         cfg = self.config
 
         # Define the backbone (MLP, LeNet, VGG, ResNet ... etc) of model
-        model = models.__dict__[cfg['model_type']].__dict__[cfg['model_name']]()
+        # model = models.__dict__[cfg['model_type']].__dict__[cfg['model_name']]()
+        if 'img_sz' in cfg['model_name']:
+            model = models.__dict__[cfg['model_type']].__dict__[cfg['model_name']](self.config['img_sz'])
+        else:
+            model = models.__dict__[cfg['model_type']].__dict__[cfg['model_name']]()
 
         # Apply network surgery to the backbone
         # Create the heads for tasks (It can be single task or multi-task)
@@ -249,7 +255,7 @@ class NormalNN(nn.Module):
         return self
 
 def accumulate_acc(output, target, task, meter):
-    if 'All' in output.keys(): # Single-headed model
+    if type(output) == type(dict()) and 'All' in output.keys(): # Single-headed model
         meter.update(accuracy(output['All'], target), len(target))
     else:  # outputs from multi-headed (multi-task) model
         for t, t_out in output.items():
