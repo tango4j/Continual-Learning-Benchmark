@@ -71,9 +71,13 @@ class VAE(nn.Module):
         return mu, log_var
     
     def sampling(self, mu, log_var):
+        # std = torch.exp(0.5*log_var)
         std = torch.exp(0.5*log_var)
         # ipdb.set_trace()
-        # std = self.fixed_std * torch.ones_like(std)
+        if self.scale_std == True:
+            std = self.fixed_std * std
+        else:
+            std = self.fixed_std * torch.ones_like(std)
         eps = torch.randn_like(std)
         return eps.mul(std).add_(mu) # return z sample
         

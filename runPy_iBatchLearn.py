@@ -202,7 +202,7 @@ def get_args(argv):
     parser.add_argument('--d_v', type=int, default=64, help="Transformer arg d_v")
     parser.add_argument('--compress_data', type=int, default=1, help="If compress_data is 1, embedding output dim != image size")
     parser.add_argument('--max_pool_size', type=int, default=8, help="For compression, max_pool_size")
-    parser.add_argument('--predict_dim_match', type=int, default=1, help="For compression, max_pool_size")
+    parser.add_argument('--predict_dim_match', type=int, default=0, help="For compression, max_pool_size")
     parser.add_argument('--num_mha_layers', type=int, default=1, help="For compression, max_pool_size")
     # parser.add_argument('--do_task1_training', type=int, default=1, help="Do not train at the first task stage")
     parser.add_argument('--do_task1_training', type=int, default=0, help="Do not train at the first task stage")
@@ -216,7 +216,8 @@ def get_args(argv):
                         5 for orthogonalization \
                         6 for orthogonalization but freeze only last layer \
                         7 for VAE style encoder \
-                        8 for std fixed VAEyle encoder")
+                        8 for std fixed VAE-style encoder \
+                        9 for std fixed No stat 8 control group" )
     parser.add_argument('--orthogonal_init', type=bool, default=True, help="Initializee weights with orthogonal vectors")
     parser.add_argument('--log_path', type=str, default=LOG_PATH, help="Log path for log csv and txt files")
     # parser.add_argument('--mu', type=float, default=0.0, help="Mixing coeff for ML + MHA. Only valid if mlp_mha = 2")
@@ -224,6 +225,10 @@ def get_args(argv):
     # parser.add_argument('--lambda', type=float, default=0.0, help="regularization coeff")
     parser.add_argument('--img_sz', type=int, default=16, help="Image size (img_sz**2=Embedding Size)")
     parser.add_argument('--fixed_std', type=float, default=0.1, help="Image size (img_sz**2=Embedding Size)")
+    parser.add_argument('--scale_std', type=bool, default=True, help="Image size (img_sz**2=Embedding Size)")
+    # parser.add_argument('--scale_std', type=bool, default=False, help="Image size (img_sz**2=Embedding Size)")
+    parser.add_argument('--no_random_prediction', type=bool, default=True, help="Image size (img_sz**2=Embedding Size)")
+    parser.add_argument('--boost_scale', type=int, default=1, help="Image size (img_sz**2=Embedding Size)")
     # EXP_NOTE='@ stacked MLP-MHA training but qkv are all the different mlp + big mha model 3 laerys + nh 32'
     # EXP_NOTE='@ stacked MLP-MHA training + MLP frozen + plastic MHA  + random_proj + 16dim + nh2,dk32'
     # EXP_NOTE='@  MLP only + 16 dim  fixed orthogonalization test sanity check mu=0.0'
@@ -245,6 +250,7 @@ def main(argv_list):
     avg_final_acc = {}
 
     torch.manual_seed(0)
+    torch.cuda.manual_seed(0)
     # The for loops over hyper-paramerters or repeats
     pI = Aprint(args.log_tag, '{}/'.format(args.log_path)+args.log_tag+"_stdout.txt")
     args.pI = pI
