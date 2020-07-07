@@ -1,7 +1,7 @@
 import torch
 from random import shuffle
 from .wrapper import Subclass, AppendName, Permutation
-
+import ipdb
 
 def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, rand_split=False, remap_class=False):
     '''
@@ -21,9 +21,17 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
     # Ex: [0,2,4,6,8,10] or [0,50,60,70,80,90,100]
     split_boundaries = [0, first_split_sz]
     while split_boundaries[-1]<num_classes:
-        split_boundaries.append(split_boundaries[-1]+other_split_sz)
+        new_split = split_boundaries[-1]+other_split_sz
+        split_boundaries.append(new_split)
+        if (new_split+other_split_sz) > num_classes:
+            break
+    # ipdb.set_trace()
     print('split_boundaries:',split_boundaries)
-    assert split_boundaries[-1]==num_classes,'Invalid split size'
+    # assert split_boundaries[-1]==num_classes,'Invalid split size'
+    try:
+        assert split_boundaries[-1] <= num_classes,'Invalid split size'
+    except:
+        ipdb.set_trace()
 
     # Assign classes to each splits
     # Create the dict: {split_name1:[2,6,7], split_name2:[0,3,9], ...}

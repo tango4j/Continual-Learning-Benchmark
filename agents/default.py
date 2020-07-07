@@ -4,6 +4,7 @@ import torch.nn as nn
 from types import MethodType
 import models
 from utils.metric import accuracy, AverageMeter, Timer
+import ipdb
 
 class NormalNN(nn.Module):
     '''
@@ -27,6 +28,7 @@ class NormalNN(nn.Module):
         # If out_dim is a dict, there is a list of tasks. The model will have a head for each task.
         self.multihead = True if len(self.config['out_dim'])>1 else False  # A convenience flag to indicate multi-head/task
         self.model = self.create_model()
+        
         self.criterion_fn = nn.CrossEntropyLoss()
         if agent_config['gpuid'][0] >= 0:
             self.cuda()
@@ -64,7 +66,10 @@ class NormalNN(nn.Module):
         # Define the backbone (MLP, LeNet, VGG, ResNet ... etc) of model
         # model = models.__dict__[cfg['model_type']].__dict__[cfg['model_name']]()
         if 'img_sz' in cfg['model_name']:
-            model = models.__dict__[cfg['model_type']].__dict__[cfg['model_name']](self.config['img_sz'])
+            # try:
+            model = models.__dict__[cfg['model_type']].__dict__[cfg['model_name']](pretrained_model_type=cfg['pretrained_model_type'], in_channel=cfg['image_shape'][0],img_sz=cfg['img_sz'])
+            # except:
+                # ipdb.set_trace()
         else:
             model = models.__dict__[cfg['model_type']].__dict__[cfg['model_name']]()
 
@@ -177,7 +182,7 @@ class NormalNN(nn.Module):
             # Config the model and optimizer
             self.log('Epoch:{0}'.format(epoch))
             self.model.train()
-            self.scheduler.step(epoch)
+            # self.scheduler.step(epoch)
             for param_group in self.optimizer.param_groups:
                 self.log('LR:',param_group['lr'])
 

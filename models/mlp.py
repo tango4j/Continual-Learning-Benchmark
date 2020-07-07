@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
+import ipdb
 
 class MLP_MHA(nn.Module):
-
     def __init__(self, out_dim=10, in_channel=1, img_sz=32, hidden_dim=256):
         super(MLP, self).__init__()
         self.in_dim = in_channel*img_sz*img_sz
@@ -34,7 +34,8 @@ class MLP(nn.Module):
 
     def __init__(self, out_dim=10, in_channel=1, img_sz=32, hidden_dim=256):
         super(MLP, self).__init__()
-        self.in_dim = in_channel*img_sz*img_sz
+        # self.in_dim = in_channel*img_sz*img_sz
+        self.in_dim = 1*img_sz*img_sz
         self.linear = nn.Sequential(
             nn.Linear(self.in_dim, hidden_dim),
             #nn.BatchNorm1d(hidden_dim),
@@ -46,7 +47,10 @@ class MLP(nn.Module):
         self.last = nn.Linear(hidden_dim, out_dim)  # Subject to be replaced dependent on task
 
     def features(self, x):
-        x = self.linear(x.view(-1,self.in_dim))
+        try:
+            x = self.linear(x.view(-1,self.in_dim))
+        except:
+            ipdb.set_trace()
         return x
 
     def logits(self, x):
@@ -58,8 +62,9 @@ class MLP(nn.Module):
         x = self.logits(x)
         return x
 
-def MLP1000_img_sz(img_sz):
-    return MLP(hidden_dim=1000, img_sz=img_sz)
+def MLP1000_img_sz(pretrained_model_type, frozen=False, in_channel=1, img_sz=16):
+    ### This MLP type does not offer any pretrained models.
+    return MLP(hidden_dim=1000, in_channel=in_channel, img_sz=img_sz)
 
 def MLP1000_MHA():
     return MLP_MHA(hidden_dim=1000)

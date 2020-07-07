@@ -10,7 +10,7 @@ import ipdb
 
 from utils.metric import accuracy, AverageMeter, Timer
 
-from transformer.SubLayers import MultiHeadAttentionMemory, mlp_embeddingExtractor, VAE
+from transformer.SubLayers import MultiHeadAttentionMemory, mlp_embeddingExtractor, MGN
 # from transformer.SubLayers import mlp_embeddingExtractor
 
 class maxPoolFeedForward(nn.Module):
@@ -58,88 +58,71 @@ class OPT:
             self.d_model_embed=opt.d_model
             self.compress=False
         
-        # ipdb.set_trace()
-# class MHA_pool(nn.Module):
-    # def __init__(self, raw_n_image_pixels): 
-        # super().__init__()
-        # opt = OPT(raw_n_image_pixels=raw_n_image_pixels)  ### Parameter Class
-        
-        # ### Multi-head attention for Memory 
-        # self.mul_head_attn1 = MultiHeadAttentionMemory(opt.n_head, opt.d_model, opt.d_k, opt.d_v, dropout=opt.dropout).cuda()
-        # self.mul_head_attn2 = MultiHeadAttentionMemory(opt.n_head, opt.d_model, opt.d_k, opt.d_v, dropout=opt.dropout).cuda()
-        # self.mul_head_attn3 = MultiHeadAttentionMemory(opt.n_head, opt.d_model, opt.d_k, opt.d_v, dropout=opt.dropout).cuda()
-        # self.mha_fc_pool =  maxPoolFeedForward(opt.d_model, opt.d_model, opt.max_pool_size)
-    
-    # def forward(self, M):
-        # M,     attn = self.mul_head_attn1(M, M, M)
-        # M,     attn = self.mul_head_attn2(M, M, M)
-        # M_out, attn = self.mul_head_attn3(M, M, M)
-        # return M_out, attn2
-
-    
 class MHA(nn.Module):
     def __init__(self, agent_config, raw_n_image_pixels): 
         super().__init__()
         opt = OPT(agent_config, raw_n_image_pixels=raw_n_image_pixels)  ### Parameter Class
         self.agent_config = agent_config 
-        
+        self.pretrained_model_type = opt.pretrained_model_type        
         ### Multi-head attention for Memory 
         if self.agent_config['mlp_mha'] == 0:
-            self.mul_head_attn1 = MultiHeadAttentionMemory(opt).cuda()
-            self.mul_head_attn2 = MultiHeadAttentionMemory(opt).cuda()
+            self.model_gen_net1 = MultiHeadAttentionMemory(opt).cuda()
+            self.model_gen_net2 = MultiHeadAttentionMemory(opt).cuda()
 
         elif self.agent_config['mlp_mha'] == 1:
-            self.mul_head_attn1 = mlp_embeddingExtractor(opt).cuda()
-            self.mul_head_attn2 = mlp_embeddingExtractor(opt).cuda()
+            self.model_gen_net1 = mlp_embeddingExtractor(opt).cuda()
+            self.model_gen_net2 = mlp_embeddingExtractor(opt).cuda()
             
         elif self.agent_config['mlp_mha'] == 2:
             opt.mlp_res = True 
-            self.mul_head_attn1 = MultiHeadAttentionMemory(opt).cuda()
+            self.model_gen_net1 = MultiHeadAttentionMemory(opt).cuda()
             opt.d_model = opt.d_model_embed
-            self.mul_head_attn2 = MultiHeadAttentionMemory(opt).cuda()
-            self.mul_head_attn3 = MultiHeadAttentionMemory(opt).cuda()
+            self.model_gen_net2 = MultiHeadAttentionMemory(opt).cuda()
+            self.model_gen_net3 = MultiHeadAttentionMemory(opt).cuda()
         
         elif self.agent_config['mlp_mha'] == 3:
             opt.mlp_res = False
             self.mlp_embed = mlp_embeddingExtractor(opt).cuda()
             if opt.compress:
                 opt.d_model = opt.d_model_embed
-            self.mul_head_attn1 = MultiHeadAttentionMemory(opt).cuda()
-            self.mul_head_attn2 = MultiHeadAttentionMemory(opt).cuda()
-            self.mul_head_attn3 = MultiHeadAttentionMemory(opt).cuda()
+            self.model_gen_net1 = MultiHeadAttentionMemory(opt).cuda()
+            self.model_gen_net2 = MultiHeadAttentionMemory(opt).cuda()
+            self.model_gen_net3 = MultiHeadAttentionMemory(opt).cuda()
         elif self.agent_config['mlp_mha'] == 4:
             pass
             # opt.mlp_res = False
             # self.mlp_embed = mlp_embeddingExtractor(opt).cuda()
             # if opt.compress:
                 # opt.d_model = opt.d_model_embed
-            # self.mul_head_attn1 = MultiHeadAttentionMemory(opt).cuda()
-            # self.mul_head_attn2 = MultiHeadAttentionMemory(opt).cuda()
-            # self.mul_head_attn3 = MultiHeadAttentionMemory(opt).cuda()
+            # self.model_gen_net1 = MultiHeadAttentionMemory(opt).cuda()
+            # self.model_gen_net2 = MultiHeadAttentionMemory(opt).cuda()
+            # self.model_gen_net3 = MultiHeadAttentionMemory(opt).cuda()
 
         elif self.agent_config['mlp_mha'] in [5,6]:
-            self.mul_head_attn1 = mlp_embeddingExtractor(opt).cuda()
-            self.mul_head_attn2 = mlp_embeddingExtractor(opt).cuda()
+            self.model_gen_net1 = mlp_embeddingExtractor(opt).cuda()
+            self.model_gen_net2 = mlp_embeddingExtractor(opt).cuda()
         
-        elif self.agent_config['mlp_mha'] in [7, 8, 9]:
-            self.mul_head_attn1 = VAE(opt, x_dim=1024, h_dim1= 320, h_dim2=256, z_dim=self.agent_config['img_sz']**2)
-            self.mul_head_attn2 = VAE(opt, x_dim=1024, h_dim1= 320, h_dim2=256, z_dim=self.agent_config['img_sz']**2)
-        
-            # self.mul_head_attn1 = MultiHeadAttentionMemory(opt.n_head, opt.d_model, opt.d_k, opt.d_v, d_model_embed=opt.dm_out, compress=opt.compress,mlp_res=True, dropout=opt.dropout).cuda()
-            # self.mul_head_attn2 = MultiHeadAttentionMemory(opt.n_head, opt.d_model, opt.d_k, opt.d_v, d_model_embed=opt.dm_out, compress=opt.compress,mlp_res=True, dropout=opt.dropout).cuda()
-        
+        elif self.agent_config['mlp_mha'] in [7,8,9,10,11]:
+            pretrained_model_type='mlp'
+            if self.agent_config['mlp_mha'] in [10]:
+                pretrained_model_type = 'cnn_2layers'
+            elif self.agent_config['mlp_mha'] in [11]:
+                pretrained_model_type = self.pretrained_model_type
+
+            self.model_gen_net1 = MGN(opt, x_dim=1024, h_dim1= 320, h_dim2=256, z_dim=self.agent_config['img_sz']**2, mgn_model_type=pretrained_model_type)
+            # self.model_gen_net2 = MGN(opt, x_dim=1024, h_dim1= 320, h_dim2=256, z_dim=self.agent_config['img_sz']**2, mgn_model_type=pretrained_model_type)
         mp = opt.max_pool_size
         self.maxpool1d = nn.MaxPool1d(mp, stride=mp)
         
         # self.fc_dim_control= nn.Linear(raw_n_image_pixels, opt.d_model, bias=False).cuda()
     
     def forward(self, M):
-        # M,     attn = self.mul_head_attn1(M, M, M)
+        # M,     attn = self.model_gen_net1(M, M, M)
         # M = self.fc_dim_control(M)
         NL = self.agent_config['num_mha_layers']
 
-        if self.agent_config['mlp_mha'] in [7, 8, 9]:
-            M, mu, log_var = self.mul_head_attn1(M)
+        if self.agent_config['mlp_mha'] in [7,8,9,10,11]:
+            M, mu, log_var = self.model_gen_net1(M)
             attn = (mu, log_var)
         
         else:
@@ -152,14 +135,14 @@ class MHA(nn.Module):
                     M = self.mlp_embed(M)
                 
             if NL == 1:
-                M, attn = self.mul_head_attn1(M, M, M)
+                M, attn = self.model_gen_net1(M, M, M)
             elif NL == 2:
-                M, attn = self.mul_head_attn1(M, M, M)
-                M, attn = self.mul_head_attn2(M, M, M)
+                M, attn = self.model_gen_net1(M, M, M)
+                M, attn = self.model_gen_net2(M, M, M)
             elif NL == 3:
-                M, attn = self.mul_head_attn1(M, M, M)
-                M, attn = self.mul_head_attn2(M, M, M)
-                M, attn = self.mul_head_attn3(M, M, M)
+                M, attn = self.model_gen_net1(M, M, M)
+                M, attn = self.model_gen_net2(M, M, M)
+                M, attn = self.model_gen_net3(M, M, M)
             else:
                 raise ValueError('Layer number {} is not implemented.'.format(NL))
 
@@ -200,7 +183,6 @@ class Naive_Rehearsal(NormalNN):
 
         ### We assume memory size is full 
         dataset_list *= max(len(train_loader.dataset)//self.memory_size,1)  # Let old data: new data = 1:1 ### Not exactly 1:1
-
         dataset_list.append(train_loader.dataset)
 
         ### Wrap mixed dataset (dataset_list).
@@ -248,7 +230,7 @@ class Fed_Memory_Rehearsal(NormalNN):
         ### +--------------------------------
         ### | Train data specifications
         ### +--------------------------------
-        self.ch = 1
+        self.ch = self.agent_config['image_shape'][0]
         self.img_sz = self.agent_config['img_sz'] 
         self.feat_length = self.agent_config['img_sz']**2
         self.raw_input_image_shape = self.agent_config['image_shape']
@@ -312,6 +294,7 @@ class Fed_Memory_Rehearsal(NormalNN):
             # memoryListInstance = self.replaceImage2EmbeddingMemory(train_loader, noise_test=False)
             # dataset_list.append(memoryListInstance.storage)
         # else:
+        # ipdb.set_trace()
         dataset_list.append(train_loader.dataset)
 
         ### Wrap mixed dataset (dataset_list).
@@ -338,7 +321,8 @@ class Fed_Memory_Rehearsal(NormalNN):
         ### the first task, M, the second M/2, the third M/3... Memory Diverges - cf) \Sigma_{1}^{\infinity} 1/n
         num_sample_per_task = self.memory_size // self.task_count
         num_sample_per_task = min(len(train_loader.dataset),num_sample_per_task)
-       
+        # ipdb.set_trace() 
+        torch.cuda.empty_cache() 
         # (b) Reduce current exemplar set to reserve the space for the new dataset
         for storage in self.task_memory.values():
             storage.reduce(num_sample_per_task)
@@ -379,13 +363,13 @@ class Fed_Memory_Rehearsal(NormalNN):
             for ind in randind:  # save it to the memory
                 self.task_memory[self.task_count].append(embed_memory_data[ind])
         
-        elif self.method == "Compressed_Memory_Embedding_Rehearsal":
-            self.reqGradToggle(False)  ### Freeze the model
-            embed_memory_data = self.saveEmbeddingMemory(train_loader, num_sample_per_task, noise_test=False)
-            self.reqGradToggle(True)  ### Freeze the model
-            randind = torch.randperm(len(embed_memory_data))[:num_sample_per_task]  # randomly sample some data
-            for ind in randind:  # save it to the memory
-                self.task_memory[self.task_count].append(embed_memory_data[ind])
+        # elif self.method == "Compressed_Memory_Embedding_Rehearsal":
+            # self.reqGradToggle(False)  ### Freeze the model
+            # embed_memory_data = self.saveEmbeddingMemory(train_loader, num_sample_per_task, noise_test=False)
+            # self.reqGradToggle(True)  ### Freeze the model
+            # randind = torch.randperm(len(embed_memory_data))[:num_sample_per_task]  # randomly sample some data
+            # for ind in randind:  # save it to the memory
+                # self.task_memory[self.task_count].append(embed_memory_data[ind])
 
         else:
             raise ValueError('method name {} does not exist.'.format(self.method))
@@ -425,40 +409,36 @@ class Fed_Memory_Rehearsal(NormalNN):
         loss = self.criterion_fn(pred, target)
         return loss 
     
-    # def saveAsMemoryInstance(self, M_imaged, target, task, Mem):
-        # M = M_imaged.squeeze(0)
-        # for k in range(M.shape[0]):
-            # if self.noise_test == True:
-                # M_tup = ( torch.randn(self.model_input_image_shape), target[k].detach().cpu().numpy().item(), task[k])
-            # else:
-                # M_tup = (M[k].view(self.model_input_image_shape), target[k].detach().cpu().numpy().item(), task[k])
-            # fed_memory_data.append(M_tup)
-
-        # return fed_memory_data
-    
     def saveAsTuple(self, M_imaged, target, task, fed_memory_data):
         M = M_imaged.squeeze(0)
 
         ### For the conveience of loading the data, zeropad the embedding output.
         if self.agent_config['compress_data'] == 1:
-            if self.agent_config['mlp_mha'] in [8,9]:
+            if self.agent_config['mlp_mha'] in [8,9,10,11]:
                 M = self.addZeroPadding(M, isStat=True)
             else:
                 M = self.addZeroPadding(M, isStat=False)
         
         for k in range(M.shape[0]):
             if self.noise_test == True:
-                M_tup = ( torch.randn(self.raw_input_image_shape), target[k].detach().cpu().numpy().item(), task[k])
+                # M_tup = ( torch.randn(self.raw_input_image_shape), target[k].detach().cpu().numpy().item(), task[k])
+                M_tup = ( torch.randn(self.raw_input_image_shape), target[k], task[k])
             else:
                 assert torch.sum(M[0,0] != 0).item() != self.img_sz ** 2, "non-zero values should be 2x  self.img_sz**2 for stats"
+                M_memory = M[k].view(1, self.raw_input_image_shape[1], self.raw_input_image_shape[2]).detach().cpu()
+                if self.ch != 1:
+                    M_memory = M_memory.repeat(self.ch, 1, 1)
+
                 try:
-                    M_tup = (M[k].view(self.raw_input_image_shape), target[k].detach().cpu().numpy().item(), task[k])
+                    M_memory.requires_grad = False
+                    M_tup = (M_memory, target[k].detach().cpu().numpy().item(), task[k])
+                    # M_tup = (M[k].view(self.raw_input_image_shape).cuda(), target[k], task[k])
                 except:
                     ipdb.set_trace()
             fed_memory_data.append(M_tup)
 
         return fed_memory_data
-
+    
     def intraClassPredict(self, input, target, task, isTraining=False):
         org_shape = input[0, :].shape
 
@@ -467,26 +447,22 @@ class Fed_Memory_Rehearsal(NormalNN):
         data_count_check['org'] += len(task)
         
         if self.agent_config['compress_data'] == 1:
-            if self.agent_config['mlp_mha'] in [8,9]:
+            if self.agent_config['mlp_mha'] in [8,9,10,11]:
                 new_input = torch.zeros(*input.shape[:2], 2*self.img_sz, self.img_sz)
             else:
                 new_input = torch.zeros(*input.shape[:2], self.img_sz, self.img_sz)
         else:
-            if self.agent_config['mlp_mha'] in [8,9]:
+            if self.agent_config['mlp_mha'] in [8,9,10,11]:
                 new_input = torch.zeros(*input.shape[:2], self.ch, 2*self.raw_input_image_shape[1], self.raw_input_image_shape[2])
             else:
                 new_input = torch.zeros(*input.shape[:2], *self.raw_input_image_shape)
-        # if self.agent_config['compress_data'] == 1:
-            # new_input = torch.zeros(*input.shape[:2], self.img_sz, self.img_sz)
-        # else:
-            # new_input = torch.zeros(*input.shape[:2], *self.raw_input_image_shape)
 
         new_target= torch.zeros(*target.shape).long()
 
-        if self.gpu:
-            with torch.no_grad():
-                input = input.cuda()
-                target = target.cuda()
+        # if self.gpu:
+            # with torch.no_grad():
+                # input = input.cuda()
+                # target = target.cuda()
 
         target_np = target.detach().cpu().numpy()
         task_np = np.array(task)
@@ -521,29 +497,42 @@ class Fed_Memory_Rehearsal(NormalNN):
             global_label_bool_np = (target_np == label) * (new_task_bool.numpy())
             global_label_bool_tensor = torch.tensor(global_label_bool_np)
             
-            this_target = target[global_label_bool_tensor]
+            this_new_target = target[global_label_bool_tensor]
 
             M_before_integ = input[global_label_bool_tensor, :].view(-1, self.ch, self.raw_n_image_pixels)
-            M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
+            # M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
+            M_in = M_before_integ.cuda()
+            
+            ### +-------------------------------------------------
+            ### | New Images
+            ### +-------------------------------------------------
             
             ### Do MHA process + max_pool
-            M, attention = self.MHA_model(M_in)
-            if self.agent_config['mlp_mha'] in [8,9]:
+            try:
+                M, attention = self.MHA_model(M_in)
+            except:
+                ipdb.set_trace()
+            if self.agent_config['mlp_mha'] in [8,9,10,11]:
                 mu, log_var = attention
-                M = torch.cat((mu, log_var), dim=3)
+                try:
+                    M = torch.cat((mu, log_var), dim=1)
+                except:
+                    ipdb.set_trace()
                 # if self.agent_config['mlp_mha'] in [9]:
                     # M = mu
                 # ipdb.set_trace()
 
             ### Before max_pool
             if self.agent_config['compress_data'] == 1:
-                if self.agent_config['mlp_mha'] in [8,9]:
-                    M_imaged = M.view(-1, self.ch, 2*self.img_sz, self.img_sz)
+                if self.agent_config['mlp_mha'] in [8,9,10,11]:
+                    # M_imaged = M.view(-1, self.ch, 2*self.img_sz, self.img_sz)
+                    M_imaged = M.view(-1, 1, 2*self.img_sz, self.img_sz)
                 else:
                     M_imaged = M.view(-1, self.ch, self.img_sz, self.img_sz)
             else:
-                if self.agent_config['mlp_mha'] in [8,9]:
-                    M_imaged = M.view(-1, self.ch, 2*self.raw_input_image_shape[1], self.raw_input_image_shape[2])
+                if self.agent_config['mlp_mha'] in [8,9,10,11]:
+                    # M_imaged = M.view(-1, self.ch, 2*self.raw_input_image_shape[1], self.raw_input_image_shape[2])
+                    M_imaged = M.view(-1, 1, 2*self.raw_input_image_shape[1], self.raw_input_image_shape[2])
                 else:
                     M_imaged = M.view(-1, *self.raw_input_image_shape)
           
@@ -551,67 +540,82 @@ class Fed_Memory_Rehearsal(NormalNN):
             # ish = M_before_integ.shape
             # M_imaged = M.view(1, -1, ish[1], ish[2])
             
-            if len(M_imaged) == 3:
-                M_imaged = M_imaged.unsqueeze(0)
+            # if len(M_imaged) == 3:
+                # M_imaged = M_imaged.unsqueeze(0)
             
             ### Before max_pool
-            new_input[global_label_bool_tensor] = M_imaged.detach().cpu()
-            new_target[global_label_bool_tensor] = this_target.cpu()
+            ###### Array structure preserving
+            # new_input[global_label_bool_tensor] = M_imaged.detach().cpu()
+            # try:
+                # new_input[global_label_bool_tensor] = M_imaged
+            # except:
+                # ipdb.set_trace()
+            # new_target[global_label_bool_tensor] = this_target.cpu()
+            ###### List append method
            
             ### For max_pool_version
             # pooled_image_N = M_imaged.shape[1]
-            # input_list.append(M_imaged)
-            # target_list.append(this_target[:pooled_image_N])
-            
+            input_list.append(M_imaged)
+            target_list.append(this_new_target)
+           
+
+        ### +-------------------------------------------------
+        ### | Old Images
+        ### +-------------------------------------------------
         ### Second, go through old samples that are already memory samples
         old_input = torch.randn(1)
-        old_target= None 
+        old_target= torch.randn(1)
 
         if old_input_tensor.shape[0] != 0:
             ### Before max_pool
+            this_old_target = target[old_task_bool]
             if self.agent_config['compress_data'] == 1:
                 old_portion = input[old_task_bool, :]
-                if self.agent_config['mlp_mha'] in [8,9]:
-                    M_zero_removed = self.removeZeroPadding(old_portion.cpu(), isStat=True)
+                if self.agent_config['mlp_mha'] in [8,9,10,11]:
+                    M_zero_removed = self.removeZeroPadding(old_portion, isStat=True)
                 else:
-                    M_zero_removed = self.removeZeroPadding(old_portion.cpu(), isStat=False)
-                new_input[old_task_bool, :] = M_zero_removed
+                    M_zero_removed = self.removeZeroPadding(old_portion, isStat=False)
+                # new_input[old_task_bool, :] = M_zero_removed
+                input_list.append(M_zero_removed)
+                target_list.append(this_old_target)
                 old_input = M_zero_removed
 
             else:     
-                new_input[old_task_bool, :] = input[old_task_bool, :].cpu()
+                # new_input[old_task_bool, :] = input[old_task_bool, :].cpu()
+                input_list.append(input[old_task_bool, :])
+                target_list.append(this_old_target)
                 old_input = input[old_task_bool, :].cpu()
             
-            new_target[old_task_bool] = target[old_task_bool].cpu() 
-            old_target = target[old_task_bool].cpu() 
-          
+            # new_target[old_task_bool] = target[old_task_bool].cpu() 
+            old_target = target[old_task_bool]
+            
+        new_input = torch.cat(input_list, dim=0).cuda()
+        new_target = torch.cat(target_list, dim=0).cuda()
             ### For max-pooling
             # input_list.append(input[old_task_bool, :].cpu())
             # target_list.append(target[old_task_bool].cpu())
 
-        if self.agent_config['mlp_mha'] in [8,9]:
+        if self.agent_config['mlp_mha'] in [8,9,10,11]:
             if not isTraining:  ### That means we are saving the embedding for the future use.
                 assert torch.sum(new_input[0,0] != 0).item() != self.img_sz ** 2, "Should have 2x embedding size not 256"
                 return new_input, new_target
             
             elif isTraining:
-                # mu = new_input[:, :, :self.img_sz, :].view(-1, self.ch, self.img_sz**2)
-                # log_var = new_input[:, :, self.img_sz:, :].view(-1, self.ch, self.img_sz**2)
-                mu = new_input[:, :, :self.img_sz, :].view(-1, self.ch, self.img_sz**2)
-                log_var = new_input[:, :, self.img_sz:, :].view(-1, self.ch, self.img_sz**2)
-                new_input = self.MHA_model.mul_head_attn1.sampling(mu, log_var)
+                mu = new_input[:, :, :self.img_sz, :].view(-1, 1, self.img_sz**2)
+                log_var = new_input[:, :, self.img_sz:, :].view(-1, 1, self.img_sz**2)
+                new_input = self.MHA_model.model_gen_net1.sampling(mu, log_var)
                 if self.agent_config['mlp_mha'] in [9]:
                     new_input = mu
                 regular_new_input = new_input.detach().cpu()
                 boost_scale = self.agent_config['boost_scale']
                 
                 if boost_scale  > 0 and self.train_info[0] > 0 and len(old_input.shape) > 1:
-                    mu_old = old_input[:, :, :self.img_sz, :].view(-1, self.ch, self.img_sz**2)
-                    log_var_old = old_input[:, :, self.img_sz:, :].view(-1, self.ch, self.img_sz**2)
+                    mu_old = old_input[:, :, :self.img_sz, :].view(-1, 1, self.img_sz**2)
+                    log_var_old = old_input[:, :, self.img_sz:, :].view(-1, 1, self.img_sz**2)
                     boosted_list = []
                     boosted_list.append(new_input)
                     for bdx in range(boost_scale):
-                        old_input = self.MHA_model.mul_head_attn1.sampling(mu_old, log_var_old)
+                        old_input = self.MHA_model.model_gen_net1.sampling(mu_old, log_var_old)
                         if self.agent_config['mlp_mha'] in [9]:
                             old_input = mu
                         boosted_list.append(old_input)
@@ -620,13 +624,13 @@ class Fed_Memory_Rehearsal(NormalNN):
                     new_target = torch.cat([new_target, old_target_repeated], dim=0)
                     
                 ### Make it image shape     
-                new_input = new_input.view(-1, self.ch, self.img_sz, self.img_sz)
+                new_input = new_input.view(-1, 1, self.img_sz, self.img_sz)
 
                 # assert (data_count_check['old'] + data_count_check['new']) == data_count_check['org'], "[ERROR] Sample count is somewhat off."
                 # assert torch.all(target.cpu() == new_target).item() == 1, "new_target and target are different. Abort."
                 # print("===== Data quantity check passed! :", data_count_check)
                 assert torch.sum(new_input[0,0] != 0).item() == self.img_sz ** 2, "This should be 1x embedding size."
-                
+                # print("Before output", type(new_target))                
                 return new_input, new_target
       
         else:
@@ -637,28 +641,224 @@ class Fed_Memory_Rehearsal(NormalNN):
 
             return new_input, new_target
 
+    # def OLD_intraClassPredict(self, input, target, task, isTraining=False):
+        # org_shape = input[0, :].shape
+
+        # embed_memory_data = []
+        # data_count_check = {"old": 0, "new": 0, "org": 0}
+        # data_count_check['org'] += len(task)
+        
+        # if self.agent_config['compress_data'] == 1:
+            # if self.agent_config['mlp_mha'] in [8,9,10]:
+                # new_input = torch.zeros(*input.shape[:2], 2*self.img_sz, self.img_sz)
+            # else:
+                # new_input = torch.zeros(*input.shape[:2], self.img_sz, self.img_sz)
+        # else:
+            # if self.agent_config['mlp_mha'] in [8,9,10]:
+                # new_input = torch.zeros(*input.shape[:2], self.ch, 2*self.raw_input_image_shape[1], self.raw_input_image_shape[2])
+            # else:
+                # new_input = torch.zeros(*input.shape[:2], *self.raw_input_image_shape)
+
+        # new_target= torch.zeros(*target.shape).long()
+
+        # if self.gpu:
+            # with torch.no_grad():
+                # input = input.cuda()
+                # target = target.cuda()
+
+        # target_np = target.detach().cpu().numpy()
+        # task_np = np.array(task)
+        # current_task_str = self.train_info[1]
+        # # print("------ tasks {} current_task_str {} ".format(set(task), current_task_str) )
+
+        # input_list = []
+        # task_list = []
+        # target_list = []
+
+        # new_task_bool = torch.tensor(np.array(task) == current_task_str)
+        # old_task_bool = torch.tensor(np.array(task) != current_task_str)
+
+        # # new_input_tensor = input[new_task_bool]
+        # new_target_tensor = target[new_task_bool]
+        # new_task_list = tuple( task_np[new_task_bool.cpu().numpy()].tolist() )
+        
+        # old_input_tensor = input[old_task_bool]
+        # old_target_tensor = target[old_task_bool]
+        # old_task_list = tuple( task_np[old_task_bool.cpu().numpy()].tolist() )
+
+        # assert (len(new_task_list) + len(old_task_list)) == len(task), "[ERROR] Task count is somewhat off."
+        # data_count_check['new'] += len(new_task_list)
+        # data_count_check['old'] += len(old_task_list)
+        
+        # ### First go through new task samples (Needs to be converted)
+        # new_target_labels = sorted(set(new_target_tensor.cpu().numpy()))
+        
+        # ### These are real images, not representations.
+        # for idx, label in enumerate(new_target_labels):
+            # task_idx = task[idx]
+            # global_label_bool_np = (target_np == label) * (new_task_bool.numpy())
+            # global_label_bool_tensor = torch.tensor(global_label_bool_np)
+            
+            # this_new_target = target[global_label_bool_tensor]
+
+            # M_before_integ = input[global_label_bool_tensor, :].view(-1, self.ch, self.raw_n_image_pixels)
+            # # M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
+            # M_in = M_before_integ
+            
+            # ### +-------------------------------------------------
+            # ### | New Images
+            # ### +-------------------------------------------------
+            
+            # ### Do MHA process + max_pool
+            # M, attention = self.MHA_model(M_in)
+            # if self.agent_config['mlp_mha'] in [8,9,10]:
+                # mu, log_var = attention
+                # try:
+                    # M = torch.cat((mu, log_var), dim=1)
+                # except:
+                    # ipdb.set_trace()
+                # # if self.agent_config['mlp_mha'] in [9]:
+                    # # M = mu
+                # # ipdb.set_trace()
+
+            # ### Before max_pool
+            # if self.agent_config['compress_data'] == 1:
+                # if self.agent_config['mlp_mha'] in [8,9,10]:
+                    # M_imaged = M.view(-1, self.ch, 2*self.img_sz, self.img_sz)
+                # else:
+                    # M_imaged = M.view(-1, self.ch, self.img_sz, self.img_sz)
+            # else:
+                # if self.agent_config['mlp_mha'] in [8,9,10]:
+                    # M_imaged = M.view(-1, self.ch, 2*self.raw_input_image_shape[1], self.raw_input_image_shape[2])
+                # else:
+                    # M_imaged = M.view(-1, *self.raw_input_image_shape)
+          
+            # ### For max-pooling
+            # # ish = M_before_integ.shape
+            # # M_imaged = M.view(1, -1, ish[1], ish[2])
+            
+            # # if len(M_imaged) == 3:
+                # # M_imaged = M_imaged.unsqueeze(0)
+            
+            # ### Before max_pool
+            # new_input[global_label_bool_tensor] = M_imaged.detach().cpu()
+            # try:
+                # new_input[global_label_bool_tensor] = M_imaged
+            # except:
+                # ipdb.set_trace()
+            # new_target[global_label_bool_tensor] = this_target.cpu()
+           
+            # ### For max_pool_version
+            # # pooled_image_N = M_imaged.shape[1]
+            # input_list.append(M_imaged)
+            # target_list.append(this_target[:pooled_image_N])
+           
+
+        # ### +-------------------------------------------------
+        # ### | Old Images
+        # ### +-------------------------------------------------
+        # ### Second, go through old samples that are already memory samples
+        # old_input = torch.randn(1)
+        # old_target= None 
+
+        # if old_input_tensor.shape[0] != 0:
+            # ### Before max_pool
+            # if self.agent_config['compress_data'] == 1:
+                # old_portion = input[old_task_bool, :]
+                # if self.agent_config['mlp_mha'] in [8,9,10]:
+                    # M_zero_removed = self.removeZeroPadding(old_portion.cpu(), isStat=True)
+                # else:
+                    # M_zero_removed = self.removeZeroPadding(old_portion.cpu(), isStat=False)
+                # new_input[old_task_bool, :] = M_zero_removed
+                # old_input = M_zero_removed
+
+            # else:     
+                # new_input[old_task_bool, :] = input[old_task_bool, :].cpu()
+                # old_input = input[old_task_bool, :].cpu()
+            
+            # new_target[old_task_bool] = target[old_task_bool].cpu() 
+            # old_target = target[old_task_bool].cpu() 
+          
+            # ### For max-pooling
+            # # input_list.append(input[old_task_bool, :].cpu())
+            # # target_list.append(target[old_task_bool].cpu())
+
+        # if self.agent_config['mlp_mha'] in [8,9,10]:
+            # if not isTraining:  ### That means we are saving the embedding for the future use.
+                # assert torch.sum(new_input[0,0] != 0).item() != self.img_sz ** 2, "Should have 2x embedding size not 256"
+                # return new_input, new_target
+            
+            # elif isTraining:
+                # # mu = new_input[:, :, :self.img_sz, :].view(-1, self.ch, self.img_sz**2)
+                # # log_var = new_input[:, :, self.img_sz:, :].view(-1, self.ch, self.img_sz**2)
+                # mu = new_input[:, :, :self.img_sz, :].view(-1, self.ch, self.img_sz**2)
+                # log_var = new_input[:, :, self.img_sz:, :].view(-1, self.ch, self.img_sz**2)
+                # new_input = self.MHA_model.model_gen_net1.sampling(mu, log_var)
+                # if self.agent_config['mlp_mha'] in [9]:
+                    # new_input = mu
+                # regular_new_input = new_input.detach().cpu()
+                # boost_scale = self.agent_config['boost_scale']
+                
+                # if boost_scale  > 0 and self.train_info[0] > 0 and len(old_input.shape) > 1:
+                    # mu_old = old_input[:, :, :self.img_sz, :].view(-1, self.ch, self.img_sz**2)
+                    # log_var_old = old_input[:, :, self.img_sz:, :].view(-1, self.ch, self.img_sz**2)
+                    # boosted_list = []
+                    # boosted_list.append(new_input)
+                    # for bdx in range(boost_scale):
+                        # old_input = self.MHA_model.model_gen_net1.sampling(mu_old, log_var_old)
+                        # if self.agent_config['mlp_mha'] in [9]:
+                            # old_input = mu
+                        # boosted_list.append(old_input)
+                    # new_input = torch.cat(boosted_list, dim=0)
+                    # old_target_repeated = old_target.repeat((boost_scale))
+                    # new_target = torch.cat([new_target, old_target_repeated], dim=0)
+                    
+                # ### Make it image shape     
+                # new_input = new_input.view(-1, self.ch, self.img_sz, self.img_sz)
+
+                # # assert (data_count_check['old'] + data_count_check['new']) == data_count_check['org'], "[ERROR] Sample count is somewhat off."
+                # # assert torch.all(target.cpu() == new_target).item() == 1, "new_target and target are different. Abort."
+                # # print("===== Data quantity check passed! :", data_count_check)
+                # assert torch.sum(new_input[0,0] != 0).item() == self.img_sz ** 2, "This should be 1x embedding size."
+                
+                # return new_input, new_target
+      
+        # else:
+            # ### Before max-pooling 
+            # assert (data_count_check['old'] + data_count_check['new']) == data_count_check['org'], "[ERROR] Sample count is somewhat off."
+            # # print("===== Data quantity check passed! :", data_count_check)
+            # assert torch.all(target.cpu() == new_target).item() == 1, "new_target and target are different. Abort."
+
+            # return new_input, new_target
+
     def removeZeroPadding(self, input_tensor, isStat=False):
         raw_dim = self.raw_input_image_shape
         if isStat:
             non_zero_n = 2 * self.img_sz**2
             input_tensor = input_tensor.view(-1, raw_dim[0], raw_dim[1] ** 2)[:,:,:non_zero_n]
-            input_tensor = input_tensor.view(-1, self.ch, 2*self.img_sz, self.img_sz)
+            # input_tensor = input_tensor.view(-1, self.ch, 2*self.img_sz, self.img_sz)
+            ### only use the first channel 
+            # ipdb.set_trace()
+            input_tensor = input_tensor[:,0,:].view(-1, 1, 2*self.img_sz, self.img_sz)
         else: 
             non_zero_n = self.img_sz**2
             input_tensor = input_tensor.view(-1, raw_dim[0], raw_dim[1] ** 2)[:,:,:non_zero_n]
-            input_tensor = input_tensor.view(-1, *self.model_input_image_shape)
+            # input_tensor = input_tensor.view(-1, *self.model_input_image_shape)
+            input_tensor = input_tensor[:,0,:].view(-1, 1, self.model_input_image_shape[1:])
         return input_tensor
     
     def addZeroPadding(self, M_imaged, isStat=False):
         if isStat:
             ### First half is mu, another half is log_var
-            M_vector =  M_imaged.view(-1, self.raw_input_image_shape[0], 2*self.img_sz**2)
+            # M_vector =  M_imaged.view(-1, self.raw_input_image_shape[0], 2*self.img_sz**2)
+            M_vector =  M_imaged.view(-1, 1, 2*self.img_sz**2)
         else:
-            M_vector =  M_imaged.view(-1, self.raw_input_image_shape[0], self.img_sz**2)
+            # M_vector =  M_imaged.view(-1, self.raw_input_image_shape[0], self.img_sz**2)
+            M_vector =  M_imaged.view(-1, 1, self.img_sz**2)
         zero_n = self.raw_n_image_pixels - M_vector.shape[-1]
-        zero_pad = torch.zeros(*M_vector.shape[:-1], zero_n)
+        zero_pad = torch.zeros(*M_vector.shape[:-1], zero_n).cuda()
         M_zeroPadded_vec = torch.cat((M_vector, zero_pad), dim=2)
-        M = M_zeroPadded_vec.view((-1, *self.raw_input_image_shape))
+        M = M_zeroPadded_vec.view((-1, 1, *self.raw_input_image_shape[1:]))
         return M
 
         
@@ -672,180 +872,17 @@ class Fed_Memory_Rehearsal(NormalNN):
         data_count_check = {"old": 0, "new": 0, "org": 0}
         
         self.log("Saving memory embedding for each batch...")
+        self.MHA_model.eval()
         for i, (input, target, task) in enumerate(train_loader):
             
-            # print("Saving memory embedding batch {}/{}".format(i+1, len(train_loader)))
-            memory_replaced_input, this_target= self.intraClassPredict(input, target, task, isTraining=False)
-            embed_memory_data = self.saveAsTuple(memory_replaced_input, this_target, task, embed_memory_data)
-
+            # ipdb.set_trace()
+            input = input.cuda()
+            target = target.cuda()
+            with torch.no_grad():
+                memory_replaced_input, this_target= self.intraClassPredict(input, target, task, isTraining=False)
+                embed_memory_data = self.saveAsTuple(memory_replaced_input, this_target, task, embed_memory_data)
         return embed_memory_data
 
-    # def old_saveEmbeddingMemory(self, train_loader, num_sample_per_task, noise_test=False):
-        # self.noise_test = noise_test
-        
-        # embed_memory_data = []
-        # max_n_train_mha = 10 if not noise_test else 1
-        # current_task_str = self.train_info[1]
-        
-        # data_count_check = {"old": 0, "new": 0, "org": 0}
-        # for i, (input, target, task) in enumerate(train_loader):
-            # self.log("Saving memory embedding batch {}/{}".format(i+1, len(train_loader)))
-            # data_count_check['org'] += len(task)
-
-            # # if i == len(train_loader)-1:
-                # # break
-            # if self.gpu:
-                # with torch.no_grad():
-                    # input = input.cuda()
-                    # target = target.cuda()
-
-            # target_np = target.detach().cpu().numpy()
-            # task_np = np.array(task)
-            # new_task_bool = torch.tensor(np.array(task) == current_task_str)
-            # old_task_bool = torch.tensor(np.array(task) != current_task_str)
-
-            # # new_input_tensor = input[new_task_bool]
-            # new_target_tensor = target[new_task_bool]
-            # new_task_list = tuple( task_np[new_task_bool.cpu().numpy()].tolist() )
-            
-            # old_input_tensor = input[old_task_bool]
-            # old_target_tensor = target[old_task_bool]
-            # old_task_list = tuple( task_np[old_task_bool.cpu().numpy()].tolist() )
-            # try:
-                # assert (len(new_task_list) + len(old_task_list)) == len(task), "[ERROR] Task count is somewhat off."
-            # except:
-                # ipdb.set_trace()
-            # data_count_check['new'] += len(new_task_list)
-            # data_count_check['old'] += len(old_task_list)
-            
-            # ### First go through new task samples (Needs to be converted)
-            # try:
-                # new_target_labels = sorted(set(new_target_tensor.cpu().numpy()))
-            # except:
-                # ipdb.set_trace()
-
-            # for idx, label in enumerate(new_target_labels):
-                # task_idx = task[idx]
-                
-                # label_bool_tensor = torch.tensor(new_target_tensor.cpu().numpy() == label)
-                # this_target = new_target_tensor[label_bool_tensor]
-                
-                # M_before_integ = input[label_bool_tensor, :].view(-1, self.ch, self.raw_n_image_pixels)
-                # M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
-                
-                # M, attention = self.MHA_model(M_in)
-
-                # # M_imaged = M.view(M_before_integ.shape)
-                # if self.agent_config['compress_data'] == 1:
-                    # M_imaged = M.view(-1, self.ch, self.img_sz, self.img_sz)
-                # else:
-                    # M_imaged = M.view(M_before_integ.shape)
-                
-                # if len(M_imaged) == 3:
-                    # M_imaged = M_imaged.unsqueeze(0)
-                
-                # # embed_memory_data = self.saveAsTuple(M_imaged.detach().cpu(), 
-                                                     # # this_target, 
-                                                     # # new_task_list, 
-                                                     # # embed_memory_data)
-                # embed_memory_data = self.saveAsTuple(M_imaged,
-                                                     # this_target, 
-                                                     # new_task_list, 
-                                                     # embed_memory_data)
-
-                # # print("=== Saving label-wise memory embedding...{}/{}".format(idx, len(new_target_labels)))
-                # # print("length embed_memory_data : ", len(embed_memory_data) )
-               
-            # ### Second, go through old samples that are already memory samples
-            # if old_input_tensor.shape[0] != 0:
-                # embed_memory_data = self.saveAsTuple(old_input_tensor,
-                                                     # old_target_tensor, 
-                                                     # old_task_list,
-                                                     # embed_memory_data)
-                
-        # assert (data_count_check['old'] + data_count_check['new']) == data_count_check['org'], "[ERROR] Sample count is somewhat off."
-        # # self.log("===== Data quantity check passed! :", data_count_check)
-        # # ipdb.set_trace()
-        # return embed_memory_data
-
-    # def getCompressedMemory(self, train_loader, num_sample_per_task, noise_test=False):
-        # self.noise_test = noise_test
-        
-        # fed_memory_data = []
-        # max_n_train_mha = 10 if not noise_test else 1
-        
-        # for epoch_idx in range(max_n_train_mha):
-            # self.log("*Compressed Mem Epoch: {}/{}".format(epoch_idx+1, max_n_train_mha) )
-            # batch_acc = AverageMeter()
-            # for i, (input, target, task) in enumerate(train_loader):
-                # # print("task : ", task[0], flush=True)
-                # if i == len(train_loader)-1:
-                    # break
-                # if self.gpu:
-                    # with torch.no_grad():
-                        # input = input.cuda()
-                        # target = target.cuda()
-                # M = input
-                # raw_n_image_pixels = M.shape[2] * M.shape[3]
-                # M = M.view(-1, self.ch, raw_n_image_pixels)            
-
-                # # max_n_train_mha = 1000000
-                # labels = sorted(list(set(target.cpu().numpy())))
-
-                # self.MHA_model.train()
-                # acc = AverageMeter()
-                # c_loss = 0
-                # out_box, label_box = [], []
-                
-                # for idx, label in enumerate(labels):
-                    # acc_label = AverageMeter()
-                    # task_idx = task[idx]
-                    # this_target = target[target == label]
-                    
-                    # M_before_integ = input[target == label, :].view(-1, self.ch, self.raw_n_image_pixels)
-                    # M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
-                    
-                    # if epoch_idx == 0:
-                        # M_before_integ = input[target == label, :].view(-1, self.ch, self.raw_n_image_pixels)
-                        # M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length
-                    # else:
-                        # M_in = self.neural_task_memory[task_idx][label][i].cuda()
-                        # M_before_integ = M_in
-
-                    # self.mha_optimizer.zero_grad()
-                    # M, attention = self.MHA_model(M_in)
-                    # # M = M[0,:,:]
-                    # # else:
-                        # # M = self.neural_task_memory[task_idx][label]
-                    # if self.agent_config['compress_data'] == 1:
-                        # M_imaged = M.view(-1, self.ch, self.img_sz, self.img_sz)
-                    # else:
-                        # M_imaged = M.view(M_before_integ.shape)
-                    
-                    # if len(M_imaged) == 3:
-                        # M_imaged = M_imaged.unsqueeze(0)
-
-                    # self.neural_task_memory[task_idx][label][i] = M_imaged.detach().cpu()
-
-                    # MHA_output = self.model.forward(M_imaged)
-                    # class_loss = self.aggregatedClassLoss(MHA_output, this_target)
-                    
-                    # if epoch_idx == max_n_train_mha -1:
-                        # fed_memory_data = self.saveAsTuple(M_imaged.detach().cpu(), target, task, fed_memory_data)
-
-                    # class_loss.backward()
-                    # self.mha_optimizer.step()
-                    
-                    # acc = accumulate_acc(MHA_output['All'].detach(), this_target.detach(), task, acc)
-                    # batch_acc = accumulate_acc(MHA_output['All'].detach(), this_target.detach(), task, batch_acc)
-
-                    # c_loss += class_loss.detach().cpu().numpy()
-
-            # self.log("Epoch Acc {}/{} ACC: {:2.4f} ".format(epoch_idx+1, max_n_train_mha, batch_acc.avg))
-            # batch_acc = accumulate_acc(MHA_output['All'].detach(), this_target, task, batch_acc)
-        # return fed_memory_data
-    
-    
     def predict(self, inputs):
         self.model.eval()
         out = self.forward(inputs)
@@ -871,23 +908,13 @@ class Fed_Memory_Rehearsal(NormalNN):
         M_before_integ = inputs.view(-1, self.ch, self.raw_n_image_pixels)
         # M_in = M_before_integ.unsqueeze(dim=0)  ### Batch --> input_length: DON'T USE THIS FOR INFERENCE
         M_in = M_before_integ.unsqueeze(dim=1)  ### Batch --> Batch for inference
-    
-        # if self.agent_config['predict_dim_match'] == 1:
-            # # n_classes = 10
-            # dim_repeat = int(self.agent_config['batch_size']//n_classes)
-            # M_in = M_in.repeat(1, dim_repeat, 1, 1) 
-            # M_in += 0.05*torch.randn(*M_in.shape).cuda()
-            # M, attention = self.MHA_model(M_in)
-            # M = torch.mean(M, dim=1, keepdim=True)
-        # else:
-            # M, attention = self.MHA_model(M_in)
         M, attention = self.MHA_model(M_in)
         
-        if self.agent_config['mlp_mha'] in [8,9]:
+        if self.agent_config['mlp_mha'] in [8,9,10,11]:
             mu, log_var = attention
-            M_sampled = self.MHA_model.mul_head_attn1.sampling(mu, log_var)
+            M_sampled = self.MHA_model.model_gen_net1.sampling(mu, log_var)
             assert M_sampled.shape == mu.shape, "Sampled M has a different dimension"
-            if self.agent_config['no_random_prediction'] in [8,9]:
+            if self.agent_config['no_random_prediction'] in [8,9,10,11]:
                 M = mu 
             else:
                 M = M_sampled
@@ -899,9 +926,10 @@ class Fed_Memory_Rehearsal(NormalNN):
         ### Before max_pool
         try:
             if self.agent_config['compress_data'] == 1:
-                M_imaged = M.view(-1, self.ch, self.img_sz, self.img_sz).detach()
+                # M_imaged = M.view(-1, self.ch, self.img_sz, self.img_sz).detach()
+                M_imaged = M.view(-1, 1, self.img_sz, self.img_sz).detach()
             else:
-                M_imaged = M.view(-1, *self.raw_input_image_shape).detach()
+                M_imaged = M.view(-1, 1, *self.raw_input_image_shape[1:]).detach()
             # M_imaged = M.view(-1, self.ch, self.img_sz, self.img_sz).detach()
         except:
             ipdb.set_trace()
@@ -913,28 +941,6 @@ class Fed_Memory_Rehearsal(NormalNN):
         if len(M_imaged) == 3:
             M_imaged = M_imaged.unsqueeze(0)
         
-        ### Before max_pool
-        # out_list.append(M_imaged) 
-        # target_list.append(this_target) 
-
-            ### For max-pooling
-            # pooled_image_N = M_imaged.shape[1]
-            # out_list.append(M_imaged)
-            # target_list.append(this_target[:pooled_image_N])
-
-        #### Before max-pooling 
-        # M_imaged_batch = torch.cat(out_list, dim=0).view(-1, *self.model_input_image_shape)
-
-        ### For max-pooling
-        # M_imaged_batch = torch.cat(out_list, dim=1).view(-1, *self.model_input_image_shape).cuda()
-        # M_imaged_batch = M_imaged_batch.squeeze(0)
-        # ipdb.set_trace()
-        # try:
-            # M_imaged = self.addZeroPadding(M_imaged)
-            # M_imaged_batch = M_imaged.view(-1, *org_shape)
-
-        # except:
-            # ipdb.set_trace(
         M_imaged_batch = M_imaged
         out = self.forward(M_imaged_batch)
         # new_target = torch.cat(target_list, dim=0)
@@ -958,8 +964,6 @@ class Fed_Memory_Rehearsal(NormalNN):
                     target = target.cuda()
             # output = self.predict(input)
             output, new_target = self.class_wise_predict(input, target, task)
-            # output, new_target = self.intraClassPredict(input, target, task)
-            
             target = new_target
 
             # Summarize the performance of all tasks, or 1 task, depends on dataloader.
@@ -1044,9 +1048,9 @@ class Fed_Memory_Rehearsal(NormalNN):
         
         self.log("====== memory_init_optimizer ======")
         self.memory_optimizer = torch.optim.__dict__[self.config['optimizer']](**optimizer_arg)
-        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.memory_optimizer, 
-                                                              milestones=self.config['schedule'],
-                                                              gamma=0.1)
+        # self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.memory_optimizer, 
+                                                              # milestones=self.config['schedule'],
+                                                              # gamma=0.1)
     
 
     def sampleWeights(self, name):
@@ -1149,7 +1153,7 @@ class Fed_Memory_Rehearsal(NormalNN):
             # kld = self.vae_loss_function(*attn)
             try:
                 org_M = aggr_input_images.view(-1, self.ch, self.img_sz**2) 
-                recon_x = self.MHA_model.mul_head_attn1.decoder(aggr_embed_inputs.view(-1, self.ch, self.img_sz**2))
+                recon_x = self.MHA_model.model_gen_net1.decoder(aggr_embed_inputs.view(-1, self.ch, self.img_sz**2))
                 bce, kld = self.vae_loss_function(recon_x, org_M, *attn)
             except:
                 ipdb.set_trace()
@@ -1170,7 +1174,7 @@ class Fed_Memory_Rehearsal(NormalNN):
 
         self.memory_optimizer.zero_grad()
         if self.agent_config['mlp_mha'] == 5:
-            W = self.MHA_model.state_dict()['mul_head_attn1.fc2.weight']
+            W = self.MHA_model.state_dict()['model_gen_net1.fc2.weight']
             dimW0 = W.shape[0]
             dimW1 = W.shape[1]
             wwt = torch.matmul( W, W.transpose(1,0) )
@@ -1180,6 +1184,7 @@ class Fed_Memory_Rehearsal(NormalNN):
             so_loss =  torch.norm(reg_SO) ** 2
             so_loss.requires_grad = True
             loss = loss + self.agent_config['mu'] * so_loss
+            
         
         loss.backward()
 
@@ -1193,6 +1198,17 @@ class Fed_Memory_Rehearsal(NormalNN):
     def restore_update_model(self, input, target, task, force_train=False):
         ### Replace intputs of the current task to memory representations.
         # new_input = self.getMemoryRepresentations(input, target, task, )
+        
+        # W = self.MHA_model.state_dict()['model_gen_net1.fc1.weight']
+        # print("force train : " , force_train, "fc1 W ", W)
+        
+        if self.gpu:
+            # with torch.no_grad():
+            input = input.cuda()
+            target = target.cuda()
+
+        self.model.train(True)
+
         if force_train == True:
             self.MHA_model.train(True)
             memory_replaced_input, target = self.intraClassPredict(input, target, task, isTraining=True)
@@ -1206,16 +1222,17 @@ class Fed_Memory_Rehearsal(NormalNN):
         else:
             new_input = memory_replaced_input 
         
-        if self.gpu:
-            with torch.no_grad():
-                new_input = new_input.cuda()
-                target = target.cuda()
-        self.model.train(True)
-
+        # if self.gpu:
+            # # with torch.no_grad():
+            # new_input = new_input.cuda()
+            # target = target.cuda()
             
         out = self.forward(new_input)
-        loss = self.criterion(out, target, task)
-        
+        try:
+            loss = self.criterion(out, target, task)
+        except:
+            ipdb.set_trace() 
+
         if force_train == True:
             self.memory_optimizer.zero_grad()
             loss.backward()
@@ -1257,7 +1274,7 @@ class Fed_Memory_Rehearsal(NormalNN):
             self.log('------> Epoch:{} Task: {} '.format(epoch, self.train_info))
 
             self.model.train()
-            self.scheduler.step(epoch)
+            # self.scheduler.step(epoch)
             for param_group in self.optimizer.param_groups:
                 self.log('LR:',param_group['lr'])
 
@@ -1266,7 +1283,6 @@ class Fed_Memory_Rehearsal(NormalNN):
             batch_timer.tic()
             self.log('Itr\t\tTime\t\t  Data\t\t  Loss\t\tAcc')
             for i, (input, target, task) in enumerate(train_loader):
-                
                 data_time.update(data_timer.toc())  # measure data loading time
 
                 if self.gpu:
@@ -1274,14 +1290,12 @@ class Fed_Memory_Rehearsal(NormalNN):
                     target = target.cuda()
 
                 if self.agent_config['do_task1_training'] == 0:  ### Use random weights as embedding extractor.
-                    # try:
                     loss, output, new_target = self.restore_update_model(input, target, task, force_train=False)
-                    # except:
-                        # ipdb.set_trace()
 
                 elif self.agent_config['do_task1_training'] == 1:  ### Embedding extractor original strategy.
                     if self.train_info[0] == 0: ### If this is the first task
-                        loss, output, new_target = self.memory_update_model(input, target, task)
+                        # loss, output, new_target = self.memory_update_model(input, target, task)
+                        loss, output, new_target = self.restore_update_model(input, target, task, force_train=True)
                     else: 
                         loss, output, new_target = self.restore_update_model(input, target, task, force_train=False)
                 elif self.agent_config['do_task1_training'] == 2:  ### Just train

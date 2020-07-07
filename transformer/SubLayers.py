@@ -5,69 +5,84 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformer.Modules import ScaledDotProductAttention
 import ipdb
-
+import torchvision
 __author__ = "Yu-Hsiang Huang"
-class mlp_embeddingExtractor(nn.Module):
-    ''' Multi-Head Attention module '''
-    def __init__(self, opt):
-    # def __init__(self, n_head, d_model, d_k, d_v, compress=False, d_model_embed=1024, dropout=0.1):
-        super().__init__()
-        for key, val in opt.__dict__.items():
-            setattr(self, key, val)
 
-        self.relu01 = nn.ReLU()
-        self.fc1 = nn.Linear(self.d_model, self.n_head * self.d_k)
-        if opt.compress:
-            self.fc2 = nn.Linear(self.n_head * self.d_k, self.d_model_embed)
-        else:
-            self.fc2 = nn.Linear(self.n_head * self.d_k, self.d_model)
-        
-        if opt.orthogonal_init: 
-            print("------====== Orthogonalizing the initial weights")
-            for _model in [self.fc1, self.fc2]:
-                torch.nn.init.orthogonal_(_model.weight)
-        self.init_W1 = self.fc1.weight
-        self.init_W2 = self.fc2.weight
-        # ipdb.set_trace()
-    def forward(self, _q, k, v,mask=None):
-        M = self.fc1(_q)
-        # M = self.relu01(M)
-        if self.mlp_mha == 6:
-            with torch.no_grad():
-                M = self.fc2(M)
-        else:
-            M = self.fc2(M)
-        return M, None
-
-class VAE(nn.Module):
-    def __init__(self, opt, x_dim, h_dim1, h_dim2, z_dim):
-        super(VAE, self).__init__()
+class MGN(nn.Module):
+    def __init__(self, opt, x_dim, h_dim1, h_dim2, z_dim, mgn_model_type="cnn_2layers"):
+        super(MGN, self).__init__()
         for key, val in opt.__dict__.items():
             setattr(self, key, val)
         # encoder part
-        self.fc1 = nn.Linear(x_dim, h_dim1)
-        # self.fc2 = nn.Linear(h_dim1, h_dim2)
-        self.fc31 = nn.Linear(h_dim1, z_dim)
-        self.fc32 = nn.Linear(h_dim1, z_dim)
+        self.mgn_model_type = mgn_model_type
+        self.ch = self.image_shape[0]
+        self.imageNet_shape = (224, 224)
         
-        # decoder part
-        self.fc4 = nn.Linear(z_dim, h_dim2)
-        self.fc5 = nn.Linear(h_dim2, h_dim1)
-        self.fc6 = nn.Linear(h_dim1, x_dim)
-       
-        # model_list = [self.fc1, self.fc2, self.fc31, self.fc32]
-        model_list = [self.fc1, self.fc31, self.fc32]
+        if self.mgn_model_type=="cnn_2layers":
+            self.layer1 = nn.Sequential(
+		nn.Conv2d(self.ch, 16, kernel_size=5, stride=1, padding=2),
+		nn.ReLU(),
+		nn.MaxPool2d(kernel_size=2, stride=2))
+            self.layer2 = nn.Sequential(
+		nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+		nn.ReLU(),
+		nn.MaxPool2d(kernel_size=2, stride=2))
+            # self.fc1 =  nn.Linear(8 * 8 * 16, h_dim1) 
+            # self.drop_out = nn.Dropout()
+            # self.fc2 = nn.Linear(1000, 10) 
+            last_cnn_dim = 8*8*16
+        
+        elif self.mgn_model_type == self.pretrained_model_type:
+            img_sz = (3, 32, 32)
+            self.image_size_change = nn.AdaptiveAvgPool2d((224, 224))
+            ### This upscales the image
+            # self.adap_img = nn.AdaptiveAvgPool2d(self.imageNet_shape)
+            print("Loading pretrained ImageNet model {} ...".format(self.pretrained_model_type))
+            self.pretrained_model = getattr(torchvision.models, self.pretrained_model_type)(pretrained=True)
+            last_cnn_dim = 1000
 
-        if opt.orthogonal_init: 
-            print("------====== Orthogonalizing the initial weights")
-            for _model in model_list:
-                torch.nn.init.orthogonal_(_model.weight)
+        elif self.mgn_model_type == 'mlp':
+            self.net1 = nn.Linear(x_dim, h_dim1)
+            last_cnn_dim = h_dim1
+        
+        else:
+            raise ValueError('No such MGN model type such as {}'.format(self.mgn_model_type))
 
+        self.fc31 = nn.Linear(last_cnn_dim, z_dim)
+        self.fc32 = nn.Linear(last_cnn_dim, z_dim)
+        
+        # model_list = [self.net1, self.fc2, self.fc31, self.fc32]
+        # model_list = [self.layer1, self.layer2, self.fc31, self.fc32]
+
+        # if opt.orthogonal_init: 
+            # print("------====== Orthogonalizing the initial weights")
+            # for _model in model_list:
+                # torch.nn.init.orthogonal_(_model.weight)
+
+    # def encoder(self, x):
+        # with torch.no_grad():
     def encoder(self, x):
-        with torch.no_grad():
-            h = F.relu(self.fc1(x))
-            # h = F.relu(self.fc2(h))
-            mu, log_var = self.fc31(h), self.fc32(h) # mu, log_var
+        if self.mgn_model_type == 'cnn_2layers':
+            x = x.view(-1, *self.image_shape)
+            out = self.layer1(x)
+            out = self.layer2(out)
+            h = out.view(out.size(0), -1)
+            # out = self.drop_out(out)
+            # try:
+                # h = self.fc1(out_flat)
+            # except:
+                # ipdb.set_trace()
+        elif self.mgn_model_type == self.pretrained_model_type:
+            if self.image_shape[0] == 1:
+                x = x.repeat(1, 3, 1, 1)
+            x = x.view(-1, 3, *self.image_shape[1:])
+            
+            ### h is BS x 1000
+            h = self.pretrained_model(self.image_size_change(x))
+        else:
+            h = F.relu(self.net1(x))
+        # h = F.relu(self.fc2(h))
+        mu, log_var = self.fc31(h), self.fc32(h) # mu, log_var
         return mu, log_var
     
     def sampling(self, mu, log_var):
@@ -81,51 +96,16 @@ class VAE(nn.Module):
         eps = torch.randn_like(std)
         return eps.mul(std).add_(mu) # return z sample
         
-    def decoder(self, z):
-        h = F.relu(self.fc4(z))
-        h = F.relu(self.fc5(h))
-        return F.sigmoid(self.fc6(h)) 
+    # def decoder(self, z):
+        # h = F.relu(self.fc4(z))
+        # h = F.relu(self.fc5(h))
+        # return F.sigmoid(self.fc6(h)) 
     
     def forward(self, x):
         mu, log_var = self.encoder(x)
         z = self.sampling(mu, log_var)
         # return self.decoder(z), mu, log_var
         return z, mu, log_var
-
-
-
-# class mlp2_MultiHeadAttentionMemory(nn.Module):
-    # ''' Multi-Head Attention module '''
-
-    # def __init__(self, n_head, d_model, d_k, d_v, compress=False, d_model_embed=1024, dropout=0.1):
-        # super().__init__()
-        # self.fc1 = nn.Linear(d_model, n_head * d_k)
-        # self.fc2 = nn.Linear(n_head * d_k, d_model)
-        # self.fc1_res = nn.Linear(d_model, n_head * d_k)
-        # if compress:
-            # self.fc2= nn.Linear(n_head * d_k, d_model_embed)
-        # else:
-            # self.fc2 = nn.Linear(n_head * d_k, d_model)
-        # self.relu = nn.ReLU() 
-        # # self.n_head = n_head
-        # # self.d_k = d_k
-        # # self.d_v = d_v
-        
-        # self.w_qs = nn.Linear(d_model, n_head * d_k, bias=False)
-        # self.w_ks = nn.Linear(d_model, n_head * d_k, bias=False)
-        # self.w_vs = nn.Linear(d_model, n_head * d_v, bias=False)
-        # self.fc = nn.Linear(n_head * d_v, d_model, bias=False)
-
-        # self.attention = ScaledDotProductAttention(temperature=d_k ** 0.5)
-
-        # self.dropout = nn.Dropout(dropout)
-        # self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
-
-
-    # def forward(self, _q, k, v, mask=None):
-        # M = self.fc1(_q)
-        # M = self.fc2(M)
-        # return M, ''
 
 
 class MultiHeadAttentionMemory(nn.Module):
@@ -330,6 +310,39 @@ class MultiHeadAttention(nn.Module):
         q = self.layer_norm(q)
 
         return q, attn
+
+class mlp_embeddingExtractor(nn.Module):
+    ''' Multi-Head Attention module '''
+    def __init__(self, opt):
+    # def __init__(self, n_head, d_model, d_k, d_v, compress=False, d_model_embed=1024, dropout=0.1):
+        super().__init__()
+        for key, val in opt.__dict__.items():
+            setattr(self, key, val)
+
+        self.relu01 = nn.ReLU()
+        self.net1 = nn.Linear(self.d_model, self.n_head * self.d_k)
+        if opt.compress:
+            self.fc2 = nn.Linear(self.n_head * self.d_k, self.d_model_embed)
+        else:
+            self.fc2 = nn.Linear(self.n_head * self.d_k, self.d_model)
+        
+        if opt.orthogonal_init: 
+            print("------====== Orthogonalizing the initial weights")
+            for _model in [self.net1, self.fc2]:
+                torch.nn.init.orthogonal_(_model.weight)
+
+        self.init_W1 = self.net1.weight
+        self.init_W2 = self.fc2.weight
+        # ipdb.set_trace()
+    def forward(self, _q, k, v,mask=None):
+        M = self.net1(_q)
+        # M = self.relu01(M)
+        if self.mlp_mha == 6:
+            with torch.no_grad():
+                M = self.fc2(M)
+        else:
+            M = self.fc2(M)
+        return M, None
 
 
 class PositionwiseFeedForward(nn.Module):
