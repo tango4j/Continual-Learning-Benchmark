@@ -1,7 +1,8 @@
 import torch
 from .default import NormalNN
 from .regularization import SI, EWC, EWC_online
-from .exp_replay import Naive_Rehearsal, GEM, Fed_Memory_Rehearsal
+from .exp_replay import Naive_Rehearsal
+from .mem_replay import Fed_Memory_Rehearsal
 from modules.criterions import BCEauto
 
 def init_zero_weights(m):
@@ -100,15 +101,15 @@ def EWC_online_reset_optim(agent_config):
 
 ######################################################
 
-def Memory_Embedding_Rehearsal_1100(agent_config):
+def Model_Generating_Rehearsal_1100(agent_config):
     # agent = Naive_Rehearsal(agent_config)
-    agent = Fed_Memory_Rehearsal(agent_config, method='Memory_Embedding_Rehearsal')
+    agent = Fed_Memory_Rehearsal(agent_config, method='Model_Generating_Rehearsal')
     agent.memory_size = 1100
     return agent
 
-def Compressed_Memory_Embedding_Rehearsal_1100(agent_config):
+def Memory_Embedding_Rehearsal_1100(agent_config):
     # agent = Naive_Rehearsal(agent_config)
-    agent = Fed_Memory_Rehearsal(agent_config, method='Compressed_Memory_Embedding_Rehearsal')
+    agent = Fed_Memory_Rehearsal(agent_config, method='Memory_Embedding_Rehearsal')
     agent.memory_size = 1100
     return agent
 
@@ -124,7 +125,40 @@ def Noise_Rehearsal_1100(agent_config):
     agent.memory_size = 1100
     return agent
 
+######################################################
+
+def Model_Generating_Rehearsal_2200(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Model_Generating_Rehearsal')
+    agent.memory_size = 2200
+    return agent
+
+def Memory_Embedding_Rehearsal_2200(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Memory_Embedding_Rehearsal')
+    agent.memory_size = 2200
+    return agent
+
+
+def No_Rehearsal_2200(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='No_Rehearsal')
+    agent.memory_size = 2200
+    return agent
+
+def Noise_Rehearsal_2200(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Noise_Rehearsal')
+    agent.memory_size = 2200
+    return agent
+
+
 ###==================================================
+def Model_Generating_Rehearsal_4400(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Model_Generating_Rehearsal')
+    agent.memory_size = 4400
+    return agent
 
 def Memory_Embedding_Rehearsal_4400(agent_config):
     # agent = Naive_Rehearsal(agent_config)
@@ -132,11 +166,6 @@ def Memory_Embedding_Rehearsal_4400(agent_config):
     agent.memory_size = 4400
     return agent
 
-def Compressed_Memory_Embedding_Rehearsal_4400(agent_config):
-    # agent = Naive_Rehearsal(agent_config)
-    agent = Fed_Memory_Rehearsal(agent_config, method='Compressed_Memory_Embedding_Rehearsal')
-    agent.memory_size = 4400
-    return agent
 
 def No_Rehearsal_4400(agent_config):
     # agent = Naive_Rehearsal(agent_config)
@@ -148,6 +177,32 @@ def Noise_Rehearsal_4400(agent_config):
     # agent = Naive_Rehearsal(agent_config)
     agent = Fed_Memory_Rehearsal(agent_config, method='Noise_Rehearsal')
     agent.memory_size = 4400
+    return agent
+
+###==================================================
+def Model_Generating_Rehearsal_8800(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Model_Generating_Rehearsal')
+    agent.memory_size = 8800
+    return agent
+
+def Memory_Embedding_Rehearsal_8800(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Memory_Embedding_Rehearsal')
+    agent.memory_size = 8800
+    return agent
+
+
+def No_Rehearsal_8800(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='No_Rehearsal')
+    agent.memory_size = 8800
+    return agent
+
+def Noise_Rehearsal_8800(agent_config):
+    # agent = Naive_Rehearsal(agent_config)
+    agent = Fed_Memory_Rehearsal(agent_config, method='Noise_Rehearsal')
+    agent.memory_size = 8800
     return agent
 
 
@@ -174,6 +229,11 @@ def Naive_Rehearsal_400(agent_config):
 def Naive_Rehearsal_1100(agent_config):
     agent = Naive_Rehearsal(agent_config)
     agent.memory_size = 1100
+    return agent
+
+def Naive_Rehearsal_2200(agent_config):
+    agent = Naive_Rehearsal(agent_config)
+    agent.memory_size = 2200
     return agent
 
 

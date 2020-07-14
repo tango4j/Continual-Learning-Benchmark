@@ -5,20 +5,24 @@ import torchvision
 
 class PRETRAINED(nn.Module):
 
-    def __init__(self, pretrained_model_type=None, frozen=False, out_dim=10, in_channel=1, img_sz=32, hidden_dim=256):
+    def __init__(self, pretrained_model_type=None, frozen=False, out_dim=10, in_channel=1, img_sz=32, hidden_dim=1000):
         super(PRETRAINED, self).__init__()
+        if pretrained_model_type == None:
+            raise ValueError("pretrained_model_type is not defined.")
         self.in_dim = in_channel*img_sz*img_sz
         self.in_channel = in_channel
         self.pretrained_model_type = pretrained_model_type 
         self.frozen = frozen
+        
         ### PRETRAINED part
-        layer1_N = 16
-        layer2_N = 16
         self.z_dim = img_sz ** 2
         
         ### We should use adaptive Ave. Pooling layer for changing the image size.
         self.image_size_change = nn.AdaptiveAvgPool2d((224, 224))
-        self.pretrained_model = getattr(torchvision.models, self.pretrained_model_type)(pretrained=True)
+        try:
+            self.pretrained_model = getattr(torchvision.models, self.pretrained_model_type)(pretrained=True)
+        except:
+            ipdb.set_trace()
         
         imagenet_out_dim = 1000 
         self.embed_layer=  nn.Linear(imagenet_out_dim, self.z_dim) 

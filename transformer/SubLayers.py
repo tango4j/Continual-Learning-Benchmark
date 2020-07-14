@@ -17,20 +17,20 @@ class MGN(nn.Module):
         self.mgn_model_type = mgn_model_type
         self.ch = self.image_shape[0]
         self.imageNet_shape = (224, 224)
-        
+        layer_size = 64
         if self.mgn_model_type=="cnn_2layers":
             self.layer1 = nn.Sequential(
-		nn.Conv2d(self.ch, 16, kernel_size=5, stride=1, padding=2),
+		nn.Conv2d(self.ch, layer_size, kernel_size=5, stride=1, padding=2),
 		nn.ReLU(),
 		nn.MaxPool2d(kernel_size=2, stride=2))
             self.layer2 = nn.Sequential(
-		nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+		nn.Conv2d(layer_size, layer_size, kernel_size=5, stride=1, padding=2),
 		nn.ReLU(),
 		nn.MaxPool2d(kernel_size=2, stride=2))
             # self.fc1 =  nn.Linear(8 * 8 * 16, h_dim1) 
             # self.drop_out = nn.Dropout()
             # self.fc2 = nn.Linear(1000, 10) 
-            last_cnn_dim = 8*8*16
+            last_cnn_dim = 8*8*layer_size
         
         elif self.mgn_model_type == self.pretrained_model_type:
             img_sz = (3, 32, 32)

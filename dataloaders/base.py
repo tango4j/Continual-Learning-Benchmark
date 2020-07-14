@@ -2,7 +2,7 @@ import torchvision
 from torchvision import transforms
 from .wrapper import CacheClassLabel
 
-def EMNIST(dataroot, train_aug=False):
+def EMNIST(dataroot, train_aug=False, emnist_split='balanced'):
     # Add padding to make 32x32
     # normalize = transforms.Normalize(mean=(0.1307,), std=(0.3081,))  # for 28x28
     # normalize = transforms.Normalize(mean=(0.1000,), std=(0.2752,))  # for 32x32
@@ -27,7 +27,7 @@ def EMNIST(dataroot, train_aug=False):
         train=True,
         download=True,
         transform=train_transform,
-        split='balanced'
+        split=emnist_split
     )
     print("Caching the class label...")
     train_dataset = CacheClassLabel(train_dataset)
@@ -36,7 +36,7 @@ def EMNIST(dataroot, train_aug=False):
         dataroot,
         train=False,
         transform=val_transform,
-        split='balanced'
+        split=emnist_split
     )
     val_dataset = CacheClassLabel(val_dataset)
 

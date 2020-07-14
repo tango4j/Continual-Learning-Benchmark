@@ -15,7 +15,7 @@ from datetime import datetime
 
 import os
 
-LOG_PATH="/sam/home/inctrl/Dropbox/Papers/_2020_internship/result_0706"
+LOG_PATH="/sam/home/inctrl/Dropbox/Papers/_2020_internship/result_0710"
 
 
 if not os.path.exists(LOG_PATH):
@@ -75,6 +75,7 @@ def run(args):
     if not os.path.exists('outputs'):
         os.mkdir('outputs')
 
+    
     # Prepare dataloaders
     train_dataset, val_dataset = dataloaders.base.__dict__[args.dataset](args.dataroot, args.train_aug)
     if args.n_permutation>0:
@@ -88,7 +89,6 @@ def run(args):
                                                                           rand_split=args.rand_split,
                                                                           remap_class=not args.no_class_remap)
 
-    # ipdb.set_trace()
     # Prepare the Agent (model)
     agent_config = {'lr': args.lr, 'momentum': args.momentum, 'weight_decay': args.weight_decay,'schedule': args.schedule,
                     'model_type':args.model_type, 'model_name': args.model_name, 'model_weights':args.model_weights,
@@ -98,7 +98,10 @@ def run(args):
                     'log_tag': args.log_tag,
                     'gpuid': args.gpuid,
                     'reg_coef':args.reg_coef,
-                    'pI':args.pI}
+                    'pI':args.pI, 
+                    'train_dataset_splits':train_dataset_splits,
+                    'val_dataset_splits':val_dataset_splits,
+                    'task_output_space':task_output_space}
     
     agent_config.update(args.__dict__)
     
@@ -209,31 +212,28 @@ def get_args(argv):
     parser.add_argument('--n_head', type=int, default=5, help="Transformer arg n_head")
     parser.add_argument('--d_k', type=int, default=64, help="Transformer arg d_k")
     parser.add_argument('--d_v', type=int, default=64, help="Transformer arg d_v")
+    parser.add_argument('--dist_measure', type=str, default='euc', help="Distance measure for clustering: kl | euc | cos")
     parser.add_argument('--compress_data', type=int, default=1, help="If compress_data is 1, embedding output dim != image size")
     parser.add_argument('--max_pool_size', type=int, default=8, help="For compression, max_pool_size")
     parser.add_argument('--predict_dim_match', type=int, default=0, help="For compression, max_pool_size")
     parser.add_argument('--num_mha_layers', type=int, default=1, help="For compression, max_pool_size")
+    parser.add_argument('--n_clusters', type=int, default=6, help="For compression, max_pool_size")
+    parser.add_argument('--pretrain', type=int, default=1, help="Pretrain with separate dataset")
     # parser.add_argument('--do_task1_training', type=int, default=0, help="Do not train at the first task stage")
-    # parser.add_argument('--do_task1_training', type=int, default=1, help="Do not train at the first task stage")
-    parser.add_argument('--do_task1_training', type=int, default=2, help="Do not train at the first task stage")
-    parser.add_argument('--mlp_mha', type=int, default=11, help="Use simple lp instead of MHA, \
+    parser.add_argument('--do_task1_training', type=int, default=1, help="Do not train at the first task stage")
+    # parser.add_argument('--do_task1_training', type=int, default=2, help="Do not train at the first task stage")
+    
+    parser.add_argument('--mlp_mha', type=int, default=10, help="Use simple lp instead of MHA, \
                         -1 for bypass, \
-                        0 for MHA, \
-                        1 for mlp, \
-                        2 for hybrid, \
-                        3 for stacked frozen MLP-> plastic MHA,\
-                        4 for stacked plastic MLP-> plastic MHA,\
-                        5 for orthogonalization \
-                        6 for orthogonalization but freeze only last layer \
                         7 for VAE style encoder \
                         8 for std fixed VAE-style encoder \
                         9 for std fixed No stat 8 control group \
                         10 for CNN std-scaled MGN encoder \
-                        11 for pretrained std-scaled MGN encoder" )
+                        11 for pretrained std-scaled MGN encoder")
+    
     parser.add_argument('--pretrained_model_type', type=str, default='resnet18', help="Pretrained network with image net dataset")
     parser.add_argument('--orthogonal_init', type=bool, default=True, help="Initializee weights with orthogonal vectors")
     parser.add_argument('--log_path', type=str, default=LOG_PATH, help="Log path for log csv and txt files")
-    # parser.add_argument('--mu', type=float, default=0.0, help="Mixing coeff for ML + MHA. Only valid if mlp_mha = 2")
     parser.add_argument('--mu', type=float, default=0.0, help="regularization coeff")
     # parser.add_argument('--lambda', type=float, default=0.0, help="regularization coeff")
     parser.add_argument('--img_sz', type=int, default=16, help="Image size (img_sz**2=Embedding Size)")
@@ -242,10 +242,11 @@ def get_args(argv):
     # parser.add_argument('--scale_std', type=bool, default=False, help="Image size (img_sz**2=Embedding Size)")
     parser.add_argument('--no_random_prediction', type=bool, default=True, help="Image size (img_sz**2=Embedding Size)")
     parser.add_argument('--boost_scale', type=int, default=1, help="Image size (img_sz**2=Embedding Size)")
+    parser.add_argument('--clustering_type', type=int, default=2, help="0 for random sampling, 1 for k-means")
     # EXP_NOTE='@ stacked MLP-MHA training but qkv are all the different mlp + big mha model 3 laerys + nh 32'
     # EXP_NOTE='@ stacked MLP-MHA training + MLP frozen + plastic MHA  + random_proj + 16dim + nh2,dk32'
     # EXP_NOTE='@  MLP only + 16 dim  fixed orthogonalization test sanity check mu=0.0'
-    EXP_NOTE='@  resnet18 on CIFAR100'
+    EXP_NOTE='@ cnn on EMNIST test'
     # EXP_NOTE='@ Debugging'
     
     parser.add_argument('--exp_note', type=str, 
@@ -268,15 +269,17 @@ def main(argv_list):
     pI = Aprint(args.log_tag, '{}/'.format(args.log_path)+args.log_tag+"_stdout.txt")
     args.pI = pI
     writeDictArgs(args.__dict__,  '{}/'.format(args.log_path)+args.log_tag+"_args.csv")
+    
     if args.mlp_mha == 0:
         assert args.img_sz == 32, "Original MHA should have the same size input/output"
-
     for reg_coef in reg_coef_list:
         args.reg_coef = reg_coef
         avg_final_acc[reg_coef] = np.zeros(args.repeat)
         for r in range(args.repeat):
             # Run the experiment
+            # ========================================================
             acc_table, task_names = run(args)
+            # ========================================================
             print(acc_table)
             writeDictLOG(acc_table,  '{}/'.format(args.log_path)+args.log_tag+"_dict.csv")
             # Calculate average performance across tasks
